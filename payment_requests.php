@@ -371,7 +371,7 @@ include 'includes/app_header.php';
                     <div style="position: relative;">
                         <i class="ph ph-tag"
                             style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 16px;"></i>
-                        <select name="request_type" required
+                        <select name="request_type" id="requestTypeSelect" required
                             style="width: 100%; padding: 10px 12px 10px 32px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; color: var(--text-primary); outline: none; appearance: none;">
                             <option value="">Select Type</option>
                             <option value="contractor - installation work">Contractor - Installation Work</option>
@@ -404,7 +404,7 @@ include 'includes/app_header.php';
                         <div style="position: relative;">
                             <i class="ph ph-currency-inr"
                                 style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 16px;"></i>
-                            <input type="number" step="0.01" name="amount" placeholder="0.00" required
+                            <input type="number" id="requestAmountInput" step="0.01" name="amount" placeholder="0.00" required
                                 max="<?php echo $available_request_limit; ?>"
                                 style="width: 100%; padding: 10px 12px 10px 32px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; color: var(--text-primary); outline: none;">
                         </div>
@@ -420,7 +420,7 @@ include 'includes/app_header.php';
                         <label
                             style="display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px;">Project</label>
                         <div style="position: relative;">
-                            <select name="project_id" required
+                            <select name="project_id" id="requestProjectSelect" required
                                 style="width: 100%; padding: 10px 12px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; color: var(--text-primary); outline: none; appearance: none; opacity: 1;">
                                 <option value="">Select Project</option>
                                 <?php foreach ($active_projects as $p): ?>
@@ -522,6 +522,58 @@ include 'includes/app_header.php';
                         });
                 });
             }
+
+            // Dynamic Budget Loading Logic
+            const projectSelect = document.getElementById('requestProjectSelect');
+            const typeSelect = document.getElementById('requestTypeSelect');
+            const amountInput = document.getElementById('requestAmountInput');
+            const limitBadge = document.getElementById('availableLimitBadge');
+            const employeeLimit = <?php echo (float)$available_request_limit; ?>;
+
+            function updateAvailableLimit() {
+                const projectId = projectSelect ? projectSelect.value : null;
+                const requestType = typeSelect ? typeSelect.value : null;
+                
+                if (!projectId) {
+                    limitBadge.textContent = 'Available: ₹' + employeeLimit.toLocaleString('en-IN', {minimumFractionDigits: 2});
+                    amountInput.max = employeeLimit;
+                    return;
+                }
+
+                limitBadge.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i> Checking Budget...';
+                
+                let fetchUrl = 'handlers/get_project_budget.php?project_id=' + projectId;
+                if (requestType) {
+                    fetchUrl += '&request_type=' + encodeURIComponent(requestType);
+                }
+
+                fetch(fetchUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const projectRemaining = data.remaining_budget;
+                            const finalAvailable = Math.min(employeeLimit, projectRemaining);
+                            
+                            limitBadge.textContent = 'Available: ₹' + finalAvailable.toLocaleString('en-IN', {minimumFractionDigits: 2});
+                            amountInput.max = finalAvailable;
+                            
+                            if (projectRemaining <= 0) {
+                                limitBadge.style.background = '#fef2f2';
+                                limitBadge.style.color = '#dc2626';
+                            } else {
+                                limitBadge.style.background = '#f0fdf4';
+                                limitBadge.style.color = '#16a34a';
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error fetching budget:', err);
+                        limitBadge.textContent = 'Available: ₹' + employeeLimit.toLocaleString('en-IN', {minimumFractionDigits: 2});
+                    });
+            }
+
+            if (projectSelect) projectSelect.addEventListener('change', updateAvailableLimit);
+            if (typeSelect) typeSelect.addEventListener('change', updateAvailableLimit);
 
             window.addEventListener('click', (e) => {
                 if (e.target === prModal) closePRModalFunc();

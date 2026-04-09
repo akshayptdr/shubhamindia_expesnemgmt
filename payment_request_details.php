@@ -242,13 +242,13 @@ include 'includes/app_header.php';
                             Invoices Added</h2>
                     </div>
                     <div style="display: flex; align-items: center; gap: 12px;">
-                        <?php if ($request['status'] !== 'Pending' && $request['status'] !== 'Rejected'): ?>
+                        <?php if ($request['status'] === 'Paid'): ?>
                             <button class="btn-primary" onclick="openInvoiceModal()"
                                 style="background: #1a56db; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                                 <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
                             </button>
                         <?php else: ?>
-                            <button class="btn-primary" disabled title="Invoices can only be added after approval"
+                            <button class="btn-primary" disabled title="Invoices can only be added after the payment is marked as 'Paid'"
                                 style="background: #94a3b8; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: not-allowed; display: flex; align-items: center; gap: 6px; opacity: 0.7;">
                                 <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
                             </button>

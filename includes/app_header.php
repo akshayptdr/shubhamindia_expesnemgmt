@@ -55,10 +55,24 @@ $show_search = isset($show_search) ? $show_search : true;
                 <i class="ph <?php echo $current_page === 'employees' ? 'ph-fill ph-users' : 'ph-users'; ?>"></i>
                 Employees
             </a>
-            <a href="#" class="nav-item <?php echo $current_page === 'reports' ? 'active' : ''; ?>">
-                <i class="ph <?php echo $current_page === 'reports' ? 'ph-fill' : ''; ?> ph-chart-bar"></i>
-                Reports
-            </a>
+            <div class="nav-dropdown <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee']) ? 'open' : ''; ?>">
+                <button class="nav-item nav-dropdown-toggle" onclick="toggleDropdown(this)">
+                    <i class="ph <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee']) ? 'ph-fill' : ''; ?> ph-chart-bar"></i>
+                    Reports
+                    <i class="ph ph-caret-down nav-dropdown-arrow"></i>
+                </button>
+                <div class="nav-dropdown-menu">
+                    <a href="report_voucher.php" class="nav-sub-item <?php echo $current_page === 'report_voucher' ? 'active' : ''; ?>">
+                        Voucher Report
+                    </a>
+                    <a href="report_project_cost.php" class="nav-sub-item <?php echo $current_page === 'report_project_cost' ? 'active' : ''; ?>">
+                        Project Cost
+                    </a>
+                    <a href="report_employee.php" class="nav-sub-item <?php echo $current_page === 'report_employee' ? 'active' : ''; ?>">
+                        Employee Wise
+                    </a>
+                </div>
+            </div>
             <a href="projects.php" class="nav-item <?php echo $current_page === 'projects' ? 'active' : ''; ?>">
                 <i class="ph <?php echo $current_page === 'projects' ? 'ph-fill ph-briefcase' : 'ph-briefcase'; ?>"></i>
                 Project List

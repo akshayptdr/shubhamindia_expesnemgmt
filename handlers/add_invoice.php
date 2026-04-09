@@ -25,10 +25,16 @@ try {
         throw new Exception('Missing required fields: Request ID and Amount are mandatory.');
     }
 
-    // Validate if the amount does not exceed the remaining payment request limit
-    $stmtPR = $pdo->prepare("SELECT amount FROM payment_requests WHERE id = ?");
+    // Validate if the request is paid and amount does not exceed the remaining limit
+    $stmtPR = $pdo->prepare("SELECT amount, status FROM payment_requests WHERE id = ?");
     $stmtPR->execute([$requestId]);
-    $prAmount = (float) $stmtPR->fetchColumn();
+    $prData = $stmtPR->fetch(PDO::FETCH_ASSOC);
+    $prAmount = (float) ($prData['amount'] ?? 0);
+    $prStatus = $prData['status'] ?? '';
+
+    if ($prStatus !== 'Paid') {
+        throw new Exception("Invoices can only be added to requests that have been marked as 'Paid'. Current status: " . $prStatus);
+    }
 
     $stmtInv = $pdo->prepare("SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = ?");
     $stmtInv->execute([$requestId]);

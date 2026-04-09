@@ -39,6 +39,12 @@
             }, 500);
         });
     }
+
+    // Sidebar Dropdown Toggle
+    function toggleDropdown(btn) {
+        const dropdown = btn.closest('.nav-dropdown');
+        dropdown.classList.toggle('open');
+    }
 </script>
 </body>
 
