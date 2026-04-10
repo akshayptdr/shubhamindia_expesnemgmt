@@ -7,6 +7,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'error' => 'Authentication required']);
+    exit;
+}
+
 try {
     $requestId = $_POST['payment_request_id'] ?? null;
     $invoiceNo = $_POST['invoice_no'] ?? null;
@@ -26,14 +32,25 @@ try {
     }
 
     // Validate if the request is paid and amount does not exceed the remaining limit
-    $stmtPR = $pdo->prepare("SELECT amount, status FROM payment_requests WHERE id = ?");
+    $stmtPR = $pdo->prepare("SELECT amount, status, employee_id FROM payment_requests WHERE id = ?");
     $stmtPR->execute([$requestId]);
     $prData = $stmtPR->fetch(PDO::FETCH_ASSOC);
+
+    if (!$prData) {
+        throw new Exception("Payment request not found.");
+    }
+
     $prAmount = (float) ($prData['amount'] ?? 0);
     $prStatus = $prData['status'] ?? '';
+    $prEmployeeId = $prData['employee_id'] ?? 0;
+
+    // Ownership check
+    if ($prEmployeeId != $_SESSION['user_id']) {
+        throw new Exception("Unauthorized: Only the creator of this request can add invoices.");
+    }
 
     if ($prStatus !== 'Paid') {
-        throw new Exception("Invoices can only be added to requests that have been marked as 'Paid'. Current status: " . $prStatus);
+        throw new Exception("Invoices can only be added to requests that have been marked as 'Paid'.");
     }
 
     $stmtInv = $pdo->prepare("SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = ?");

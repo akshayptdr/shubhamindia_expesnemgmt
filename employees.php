@@ -4,6 +4,13 @@ if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
 }
+
+// Role-based Access Control
+$allowed_roles = ['Director', 'Accounts Manager', 'Accounts Assistant'];
+if (!isset($_SESSION['user_role']) || !in_array($_SESSION['user_role'], $allowed_roles)) {
+    header("Location: index.php");
+    exit;
+}
 require 'includes/db.php';
 
 // Search & Pagination Logic

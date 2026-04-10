@@ -21,22 +21,56 @@ $requestId = (int) $data['id'];
 $status = $data['status'];
 $reviewerId = $_SESSION['user_id'];
 
-// Validate status
-$validStatuses = ['Approved', 'Rejected', 'Paid'];
-if (!in_array($status, $validStatuses)) {
-    echo json_encode(['success' => false, 'error' => 'Invalid status']);
-    exit;
+// Role-based Authorization
+$userRole = $_SESSION['user_role'] ?? '';
+$paymentRoles = ['Director', 'Accounts Manager', 'Accounts Assistant'];
+
+if ($status === 'Paid') {
+    if (!in_array($userRole, $paymentRoles)) {
+        echo json_encode(['success' => false, 'error' => "Only " . implode(', ', $paymentRoles) . " can mark requests as Paid."]);
+        exit;
+    }
 }
 
 try {
-    // Check if request exists
-    $stmt = $pdo->prepare("SELECT status, project_id, amount FROM payment_requests WHERE id = ?");
+    // Check if request exists and get requester role
+    $stmt = $pdo->prepare("SELECT pr.status, pr.project_id, pr.amount, e.role as requester_role 
+                          FROM payment_requests pr 
+                          JOIN employees e ON pr.employee_id = e.id 
+                          WHERE pr.id = ?");
     $stmt->execute([$requestId]);
     $request = $stmt->fetch();
 
     if (!$request) {
         echo json_encode(['success' => false, 'error' => 'Request not found']);
         exit;
+    }
+
+    // Tiered Authorization Logic for Approval/Rejection
+    if (in_array($status, ['Approved', 'Rejected'])) {
+        $requester_role = $request['requester_role'];
+        $can_approve = false;
+
+        if (in_array($requester_role, ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'])) {
+            if (in_array($userRole, ['Project Manager', 'Director'])) {
+                $can_approve = true;
+            }
+        } elseif ($requester_role === 'Project Manager') {
+            if (in_array($userRole, ['Senior Project Manager', 'Director'])) {
+                $can_approve = true;
+            }
+        } elseif ($requester_role === 'Senior Project Manager') {
+            if ($userRole === 'Director') {
+                $can_approve = true;
+            }
+        } elseif ($userRole === 'Director') {
+            $can_approve = true;
+        }
+
+        if (!$can_approve) {
+            echo json_encode(['success' => false, 'error' => "Unauthorized: You cannot $status this request."]);
+            exit;
+        }
     }
 
     // Validation logic for transitions

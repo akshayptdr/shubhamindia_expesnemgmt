@@ -2,6 +2,7 @@
 // Default values if not set
 $current_page = isset($current_page) ? $current_page : '';
 $show_search = isset($show_search) ? $show_search : true;
+$page_title = isset($page_title) ? $page_title : 'Dashboard';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -35,10 +36,12 @@ $show_search = isset($show_search) ? $show_search : true;
         </div>
 
         <nav class="nav-links">
+            <?php if (isset($_SESSION['user_role']) && !in_array($_SESSION['user_role'], ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'])): ?>
             <a href="index.php" class="nav-item <?php echo $current_page === 'dashboard' ? 'active' : ''; ?>">
                 <i class="ph <?php echo $current_page === 'dashboard' ? 'ph-fill' : ''; ?> ph-squares-four"></i>
                 Dashboard
             </a>
+            <?php endif; ?>
             <a href="payment_requests.php" class="nav-item <?php echo $current_page === 'payments' ? 'active' : ''; ?>">
                 <i class="ph <?php echo $current_page === 'payments' ? 'ph-fill' : ''; ?> ph-receipt"></i>
                 Payment Requests
@@ -51,10 +54,12 @@ $show_search = isset($show_search) ? $show_search : true;
                 <i class="ph <?php echo $current_page === 'rejected' ? 'ph-fill' : ''; ?> ph-x-circle"></i>
                 Rejected
             </a> -->
+            <?php if (isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], ['Director', 'Accounts Manager', 'Accounts Assistant'])): ?>
             <a href="employees.php" class="nav-item <?php echo $current_page === 'employees' ? 'active' : ''; ?>">
                 <i class="ph <?php echo $current_page === 'employees' ? 'ph-fill ph-users' : 'ph-users'; ?>"></i>
                 Employees
             </a>
+            <?php endif; ?>
             <div class="nav-dropdown <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee']) ? 'open' : ''; ?>">
                 <button class="nav-item nav-dropdown-toggle" onclick="toggleDropdown(this)">
                     <i class="ph <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee']) ? 'ph-fill' : ''; ?> ph-chart-bar"></i>
@@ -62,21 +67,31 @@ $show_search = isset($show_search) ? $show_search : true;
                     <i class="ph ph-caret-down nav-dropdown-arrow"></i>
                 </button>
                 <div class="nav-dropdown-menu">
+                    <?php if (isset($_SESSION['user_role']) && !in_array($_SESSION['user_role'], ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'])): ?>
                     <a href="report_voucher.php" class="nav-sub-item <?php echo $current_page === 'report_voucher' ? 'active' : ''; ?>">
                         Voucher Report
                     </a>
                     <a href="report_project_cost.php" class="nav-sub-item <?php echo $current_page === 'report_project_cost' ? 'active' : ''; ?>">
                         Project Cost
                     </a>
+                    <?php endif; ?>
                     <a href="report_employee.php" class="nav-sub-item <?php echo $current_page === 'report_employee' ? 'active' : ''; ?>">
                         Employee Wise
                     </a>
                 </div>
             </div>
+            <?php if (isset($_SESSION['user_role']) && !in_array($_SESSION['user_role'], ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'])): ?>
             <a href="projects.php" class="nav-item <?php echo $current_page === 'projects' ? 'active' : ''; ?>">
                 <i class="ph <?php echo $current_page === 'projects' ? 'ph-fill ph-briefcase' : 'ph-briefcase'; ?>"></i>
                 Project List
             </a>
+            <?php endif; ?>
+            <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'Director'): ?>
+            <a href="budget_change_requests.php" class="nav-item <?php echo $current_page === 'budget_change' ? 'active' : ''; ?>">
+                <i class="ph <?php echo $current_page === 'budget_change' ? 'ph-fill ph-currency-circle-dollar' : 'ph-currency-circle-dollar'; ?>"></i>
+                Request for budget change
+            </a>
+            <?php endif; ?>
         </nav>
 
         <div class="sidebar-footer">

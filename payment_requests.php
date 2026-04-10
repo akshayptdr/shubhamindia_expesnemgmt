@@ -18,6 +18,13 @@ $status_filter = isset($_GET['status']) ? $_GET['status'] : 'All';
 $project_id_filter = isset($_GET['project_id']) ? (int) $_GET['project_id'] : null;
 
 $where_clauses = [];
+$restricted_roles = ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'];
+$is_field_user = isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], $restricted_roles);
+
+if ($is_field_user) {
+    $where_clauses[] = "pr.employee_id = " . (int) $_SESSION['user_id'];
+}
+
 if ($status_filter !== 'All') {
     $where_clauses[] = "pr.status = '$status_filter'";
 }
@@ -31,7 +38,15 @@ if (!empty($where_clauses)) {
 }
 
 // Fetch KPI statistics
-$kpi_where = $project_id_filter ? " WHERE project_id = $project_id_filter" : "";
+$kpi_clauses = [];
+if ($is_field_user) {
+    $kpi_clauses[] = "employee_id = " . (int)$_SESSION['user_id'];
+}
+if ($project_id_filter) {
+    $kpi_clauses[] = "project_id = $project_id_filter";
+}
+
+$kpi_where = !empty($kpi_clauses) ? " WHERE " . implode(" AND ", $kpi_clauses) : "";
 $kpi_query = "SELECT 
     COUNT(*) as total_count,
     SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending_count,

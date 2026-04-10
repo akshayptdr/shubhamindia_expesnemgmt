@@ -100,23 +100,48 @@ include 'includes/app_header.php';
 
             <div style="display: flex; align-items: center; gap: 12px;">
                 <?php if ($request['status'] === 'Pending'): ?>
-                    <div style="display: flex; gap: 8px;">
-                        <button onclick="updatePaymentStatus('Approved')"
-                            style="background: #16a34a; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s;">
-                            <i class="ph ph-check-circle" style="font-size: 18px;"></i> Approve
-                        </button>
-                        <button onclick="updatePaymentStatus('Rejected')"
-                            style="background: #dc2626; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s;">
-                            <i class="ph ph-x-circle" style="font-size: 18px;"></i> Reject
-                        </button>
-                    </div>
+                    <?php 
+                    $can_approve = false;
+                    $requester_role = $request['employee_role'] ?? '';
+                    $user_role = $_SESSION['user_role'] ?? '';
+
+                    if (in_array($requester_role, ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'])) {
+                        if (in_array($user_role, ['Project Manager', 'Director'])) {
+                            $can_approve = true;
+                        }
+                    } elseif ($requester_role === 'Project Manager') {
+                        if (in_array($user_role, ['Senior Project Manager', 'Director'])) {
+                            $can_approve = true;
+                        }
+                    } elseif ($requester_role === 'Senior Project Manager') {
+                        if ($user_role === 'Director') {
+                            $can_approve = true;
+                        }
+                    } elseif ($user_role === 'Director') {
+                        $can_approve = true;
+                    }
+                    ?>
+                    <?php if ($can_approve): ?>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="updatePaymentStatus('Approved')"
+                                style="background: #16a34a; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s;">
+                                <i class="ph ph-check-circle" style="font-size: 18px;"></i> Approve
+                            </button>
+                            <button onclick="updatePaymentStatus('Rejected')"
+                                style="background: #dc2626; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s;">
+                                <i class="ph ph-x-circle" style="font-size: 18px;"></i> Reject
+                            </button>
+                        </div>
+                    <?php endif; ?>
                 <?php elseif ($request['status'] === 'Approved'): ?>
-                    <div style="display: flex; gap: 8px;">
-                        <button onclick="updatePaymentStatus('Paid')"
-                            style="background: #1e293b; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s;">
-                            <i class="ph ph-bank" style="font-size: 18px;"></i> Payment Done
-                        </button>
-                    </div>
+                    <?php if (in_array($_SESSION['user_role'], ['Director', 'Accounts Manager', 'Accounts Assistant'])): ?>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="updatePaymentStatus('Paid')"
+                                style="background: #1e293b; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: opacity 0.2s;">
+                                <i class="ph ph-bank" style="font-size: 18px;"></i> Payment Done
+                            </button>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
 
                 <div
@@ -242,18 +267,19 @@ include 'includes/app_header.php';
                             Invoices Added</h2>
                     </div>
                     <div style="display: flex; align-items: center; gap: 12px;">
-                        <?php if ($request['status'] === 'Paid'): ?>
-                            <button class="btn-primary" onclick="openInvoiceModal()"
-                                style="background: #1a56db; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                                <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
-                            </button>
-                        <?php else: ?>
-                            <button class="btn-primary" disabled title="Invoices can only be added after the payment is marked as 'Paid'"
-                                style="background: #94a3b8; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: not-allowed; display: flex; align-items: center; gap: 6px; opacity: 0.7;">
-                                <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
-                            </button>
+                        <?php if ($_SESSION['user_id'] == $request['employee_id']): ?>
+                            <?php if ($request['status'] === 'Paid'): ?>
+                                <button class="btn-primary" onclick="openInvoiceModal()"
+                                    style="background: #1a56db; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                    <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
+                                </button>
+                            <?php else: ?>
+                                <button class="btn-primary" disabled title="Invoices can only be added after the payment is marked as 'Paid'"
+                                    style="background: #94a3b8; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: not-allowed; display: flex; align-items: center; gap: 6px; opacity: 0.7;">
+                                    <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
+                                </button>
+                            <?php endif; ?>
                         <?php endif; ?>
-
                     </div>
                 </div>
 
@@ -654,6 +680,8 @@ include 'includes/app_header.php';
                             <option value="MATERIAL EXPENSES">MATERIAL EXPENSES</option>
                             <option value="OTHER / MISCELLANEOUS">OTHER / MISCELLANEOUS</option>
                             <option value="LABOUR">LABOUR</option>
+                            <option value="Contractor - Installation work">Contractor - Installation work</option>
+                            <option value="aarya team - material shifting and lifting">aarya team - material shifting and lifting</option>
                         </select>
                         <i class="ph ph-caret-down"
                             style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #64748b; font-size: 14px; pointer-events: none;"></i>
@@ -797,6 +825,49 @@ include 'includes/app_header.php';
 
     <script>
         function openInvoiceModal() {
+            const requestType = "<?php echo strtolower($request['cost_center']); ?>";
+            const mainTypeSelect = document.getElementById('mainExpenseType');
+            const options = mainTypeSelect.options;
+            
+            // First, show all options to reset
+            for (let i = 0; i < options.length; i++) {
+                options[i].hidden = false;
+                options[i].disabled = false;
+            }
+
+            if (requestType === 'contractor - installation work') {
+                // For Contractor requests, only show the contractor option
+                for (let i = 0; i < options.length; i++) {
+                    const val = options[i].value;
+                    if (val !== 'Contractor - Installation work' && val !== "") {
+                        options[i].hidden = true;
+                        options[i].disabled = true;
+                    }
+                }
+                mainTypeSelect.value = 'Contractor - Installation work';
+                handleMainTypeChange();
+            } else if (requestType === 'aarya team - material shifting and lifting') {
+                // For Aarya Team requests, only show the aarya option
+                for (let i = 0; i < options.length; i++) {
+                    const val = options[i].value;
+                    if (val !== 'aarya team - material shifting and lifting' && val !== "") {
+                        options[i].hidden = true;
+                        options[i].disabled = true;
+                    }
+                }
+                mainTypeSelect.value = 'aarya team - material shifting and lifting';
+                handleMainTypeChange();
+            } else {
+                // For Site Expenses, hide the specialized contractor/aarya options
+                for (let i = 0; i < options.length; i++) {
+                    const val = options[i].value;
+                    if (val === 'Contractor - Installation work' || val === 'aarya team - material shifting and lifting') {
+                        options[i].hidden = true;
+                        options[i].disabled = true;
+                    }
+                }
+            }
+
             document.getElementById('invoiceModal').style.display = 'block';
         }
 

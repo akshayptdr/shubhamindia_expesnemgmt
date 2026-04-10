@@ -38,8 +38,13 @@ LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
 
 $where = [];
 $params = [];
+$restricted_roles = ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'];
+$is_field_user = isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], $restricted_roles);
 
-if (!empty($employee_ids)) {
+if ($is_field_user) {
+    $where[] = "e.id = :restricted_emp_id";
+    $params[':restricted_emp_id'] = $_SESSION['user_id'];
+} elseif (!empty($employee_ids)) {
     $placeholders = [];
     foreach ($employee_ids as $idx => $eid) {
         $key = ':emp_' . $idx;
@@ -119,6 +124,7 @@ include 'includes/app_header.php';
 
     <!-- Filter Bar -->
     <form method="GET" action="report_employee.php" style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px; flex-wrap: wrap;">
+        <?php if (!$is_field_user): ?>
         <div class="form-group" style="flex: 0 0 auto;">
             <label class="form-label">Employee</label>
             <div class="multi-select-dropdown" id="employeeDropdown" style="width: 250px;">
@@ -143,6 +149,7 @@ include 'includes/app_header.php';
                 </div>
             </div>
         </div>
+        <?php endif; ?>
         <div class="form-group" style="flex: 0 0 auto;">
             <label class="form-label">From Period</label>
             <input type="date" name="from_period" class="form-input" value="<?php echo htmlspecialchars($from_period); ?>" style="width: 170px;">

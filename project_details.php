@@ -71,6 +71,7 @@ $remaining_budget = $total_budget - $utilized_budget;
 $utilized_percentage = $total_budget > 0 ? round(($utilized_budget / $total_budget) * 100) : 0;
 
 $current_page = 'projects';
+$page_title = 'Project ' . ($project['project_code'] ?? 'Details');
 
 // Calculate available payment request limit for the current user
 $user_id = $_SESSION['user_id'];
@@ -128,10 +129,12 @@ include 'includes/app_header.php';
                     style="background: white; border: 1px solid var(--border-color); color: var(--text-primary); font-weight: 500; padding: 10px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                     <i class="ph ph-receipt"></i> Request For Payment
                 </button>
+                <?php if (in_array($_SESSION['user_role'], ['Director', 'Project Manager', 'Senior Project Manager'])): ?>
                 <button class="btn-primary" id="openUpdateBudgetModal"
                     style="background: #1a56db; color: white; border: none; font-weight: 500; padding: 10px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                     <i class="ph ph-pencil-simple"></i> Update the Budget
                 </button>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
@@ -582,7 +585,7 @@ include 'includes/app_header.php';
                 <div class="modal-footer" style="display: flex; gap: 12px; margin-top: 8px;">
                     <button type="submit" class="btn-primary"
                         style="flex: 1; background: #1a56db; color: white; border: none; font-weight: 500; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                        <i class="ph ph-upload-simple"></i> Update Budget
+                        <i class="ph ph-upload-simple"></i> Submit Request
                     </button>
                     <button type="button" id="cancelUpdateBudgetBtn"
                         style="flex: 1; background: white; color: var(--text-primary); border: 1px solid var(--border-color); font-weight: 500; padding: 12px; border-radius: 8px; cursor: pointer;">
@@ -1001,18 +1004,19 @@ include 'includes/app_header.php';
                     const originalContent = submitBtn.innerHTML;
 
                     submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i> Updating...';
+                    submitBtn.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i> Submitting...';
 
-                    fetch('handlers/update_budget.php', {
+                    fetch('handlers/submit_budget_request.php', {
                         method: 'POST',
                         body: formData
                     })
                         .then(response => response.json())
                         .then(data => {
                             if (data.success) {
+                                alert(data.message || 'Request submitted successfully.');
                                 location.reload();
                             } else {
-                                alert(data.message || 'Error updating budget');
+                                alert(data.message || 'Error submitting request');
                                 submitBtn.disabled = false;
                                 submitBtn.innerHTML = originalContent;
                             }
