@@ -79,6 +79,17 @@ $employees = $stmtEmployees->fetchAll();
 
 $current_page = 'projects';
 $page_title = 'Projects';
+
+// Fetch KPI statistics for Projects
+$project_kpi_query = "SELECT 
+    COUNT(*) as total_count,
+    SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active_count,
+    SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END) as completed_count,
+    SUM(CASE WHEN status = 'In Progress' THEN 1 ELSE 0 END) as in_progress_count,
+    SUM(budget) as total_budget_sum
+FROM projects";
+$project_kpi_stats = $pdo->query($project_kpi_query)->fetch();
+
 include 'includes/app_header.php';
 ?>
 
@@ -94,6 +105,64 @@ include 'includes/app_header.php';
                 <i class="ph ph-plus"></i>
                 Add New Project
             </button>
+        </div>
+    </div>
+
+    <!-- KPI Dashboard for Projects -->
+    <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 24px; margin-bottom: 32px;">
+        <a href="?status=&search=<?php echo urlencode($search); ?>"
+            class="kpi-card"
+            style="text-decoration: none; background: white; padding: 20px 24px; border-radius: 12px; border: 1px solid <?php echo $status_filter === '' ? '#1a56db' : 'var(--border-color)'; ?>; display: flex; align-items: center; gap: 20px; transition: all 0.2s;">
+            <div style="width: 44px; height: 44px; background: #eff6ff; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="ph ph-folder-simple" style="color: #1a56db; font-size: 22px;"></i>
+            </div>
+            <div>
+                <span style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Total Projects</span>
+                <span style="font-size: 20px; font-weight: 700; color: var(--text-primary);"><?php echo number_format($project_kpi_stats['total_count']); ?></span>
+            </div>
+        </a>
+        <a href="?status=Active&search=<?php echo urlencode($search); ?>"
+            class="kpi-card"
+            style="text-decoration: none; background: white; padding: 20px 24px; border-radius: 12px; border: 1px solid <?php echo $status_filter === 'Active' ? '#16a34a' : 'var(--border-color)'; ?>; display: flex; align-items: center; gap: 20px; transition: all 0.2s;">
+            <div style="width: 44px; height: 44px; background: #ecfdf5; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="ph ph-play-circle" style="color: #16a34a; font-size: 22px;"></i>
+            </div>
+            <div>
+                <span style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Active</span>
+                <span style="font-size: 20px; font-weight: 700; color: var(--text-primary);"><?php echo number_format($project_kpi_stats['active_count'] ?: 0); ?></span>
+            </div>
+        </a>
+        <a href="?status=In Progress&search=<?php echo urlencode($search); ?>"
+            class="kpi-card"
+            style="text-decoration: none; background: white; padding: 20px 24px; border-radius: 12px; border: 1px solid <?php echo $status_filter === 'In Progress' ? '#d97706' : 'var(--border-color)'; ?>; display: flex; align-items: center; gap: 20px; transition: all 0.2s;">
+            <div style="width: 44px; height: 44px; background: #fffbeb; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="ph ph-lightning" style="color: #d97706; font-size: 22px;"></i>
+            </div>
+            <div>
+                <span style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">In Progress</span>
+                <span style="font-size: 20px; font-weight: 700; color: var(--text-primary);"><?php echo number_format($project_kpi_stats['in_progress_count'] ?: 0); ?></span>
+            </div>
+        </a>
+        <a href="?status=Completed&search=<?php echo urlencode($search); ?>"
+            class="kpi-card"
+            style="text-decoration: none; background: white; padding: 20px 24px; border-radius: 12px; border: 1px solid <?php echo $status_filter === 'Completed' ? '#1e293b' : 'var(--border-color)'; ?>; display: flex; align-items: center; gap: 20px; transition: all 0.2s;">
+            <div style="width: 44px; height: 44px; background: #f1f5f9; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="ph ph-check-circle" style="color: #1e293b; font-size: 22px;"></i>
+            </div>
+            <div>
+                <span style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Completed</span>
+                <span style="font-size: 20px; font-weight: 700; color: var(--text-primary);"><?php echo number_format($project_kpi_stats['completed_count'] ?: 0); ?></span>
+            </div>
+        </a>
+        <div class="kpi-card"
+            style="text-decoration: none; background: white; padding: 20px 24px; border-radius: 12px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 20px;">
+            <div style="width: 44px; height: 44px; background: #fdf2f8; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="ph ph-currency-inr" style="color: #db2777; font-size: 22px;"></i>
+            </div>
+            <div>
+                <span style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Total Budget</span>
+                <span style="font-size: 20px; font-weight: 700; color: var(--text-primary);">₹<?php echo number_format($project_kpi_stats['total_budget_sum'] ?: 0); ?></span>
+            </div>
         </div>
     </div>
 
