@@ -83,17 +83,40 @@ try {
         }
     }
 
+    // Calculate Available Set-Off Credit
+    // 1. Total Settled Surplus (Difference between request amount and bills for finalized settlements)
+    $sql_surplus = "SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id)), 0)
+                    FROM payment_requests pr
+                    WHERE pr.employee_id = ? 
+                      AND pr.status = 'Paid' 
+                      AND pr.voucher_approved_at IS NOT NULL";
+    $stmt_surplus = $pdo->prepare($sql_surplus);
+    $stmt_surplus->execute([$employee_id]);
+    $total_surplus = (float) $stmt_surplus->fetchColumn();
+
+    // 2. Total Credit Already Used
+    $sql_used = "SELECT IFNULL(SUM(used_set_off_amount), 0) FROM payment_requests WHERE employee_id = ?";
+    $stmt_used = $pdo->prepare($sql_used);
+    $stmt_used->execute([$employee_id]);
+    $total_used_credit = (float) $stmt_used->fetchColumn();
+
+    $available_credit = max(0, $total_surplus - $total_used_credit);
+
+    // 3. Apply credit to current request
+    $credit_to_use = min($amount, $available_credit);
+    $net_payable = $amount - $credit_to_use;
+
     // Generate a unique request number similar to #PR-1025
     $stmt = $pdo->query("SELECT MAX(id) as max_id FROM payment_requests");
     $row = $stmt->fetch();
     $next_num = ($row['max_id'] ?? 0) + 1000;
     $request_no = '#PR-' . $next_num;
 
-    $sql = "INSERT INTO payment_requests (request_no, employee_id, project_id, amount, cost_center, status, request_date, purpose) 
-            VALUES (?, ?, ?, ?, ?, 'Pending', CURDATE(), ?)";
+    $sql = "INSERT INTO payment_requests (request_no, employee_id, project_id, amount, used_set_off_amount, net_payable_amount, cost_center, status, request_date, purpose) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', CURDATE(), ?)";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$request_no, $employee_id, $project_id, $amount, $request_type, $description]);
+    $stmt->execute([$request_no, $employee_id, $project_id, $amount, $credit_to_use, $net_payable, $request_type, $description]);
 
     echo json_encode(['success' => true, 'message' => 'Payment request submitted successfully.']);
     exit;

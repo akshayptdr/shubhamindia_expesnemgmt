@@ -18,7 +18,12 @@ $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
 $perPage = 5;
 
 $sql = "SELECT p.*, e.name as manager_name, e.avatar as manager_avatar, c.name as creator_name, c.emp_id as creator_emp_id,
-               (SELECT SUM(amount) FROM payment_requests WHERE project_id = p.id AND status IN ('Approved', 'Paid')) as utilized_budget
+               (SELECT 
+                  (SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE project_id = p.id AND status IN ('Approved', 'Paid')) - 
+                  (SELECT IFNULL(SUM(pr2.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr2.id)), 0)
+                   FROM payment_requests pr2
+                   WHERE pr2.project_id = p.id AND pr2.status = 'Paid' AND pr2.voucher_approved_at IS NOT NULL)
+               ) as utilized_budget
         FROM projects p 
         LEFT JOIN employees e ON p.project_manager_id = e.id
         LEFT JOIN employees c ON p.created_by = c.id";

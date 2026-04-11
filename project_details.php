@@ -74,10 +74,14 @@ $set_off_history = $stmt_set_off->fetchAll();
 // Status and progress calculations
 $statusClass = 'status-' . strtolower(str_replace(' ', '-', $project['status']));
 $progressColor = '#1a56db';
-// Fetch approved and paid payment requests total for budget utilization
-$sql_utilized = "SELECT SUM(amount) as utilized FROM payment_requests WHERE project_id = ? AND status IN ('Approved', 'Paid')";
+// Fetch approved and paid payment requests total for budget utilization (Subtracting surpluses immediately)
+$sql_utilized = "SELECT 
+    (SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE project_id = ? AND status IN ('Approved', 'Paid')) - 
+    (SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id)), 0)
+     FROM payment_requests pr
+     WHERE pr.project_id = ? AND pr.status = 'Paid' AND pr.voucher_approved_at IS NOT NULL) as utilized";
 $stmt_utilized = $pdo->prepare($sql_utilized);
-$stmt_utilized->execute([$project_id]);
+$stmt_utilized->execute([$project_id, $project_id]);
 $utilized_row = $stmt_utilized->fetch();
 $utilized_budget = (float) ($utilized_row['utilized'] ?? 0);
 
@@ -95,18 +99,21 @@ $stmt_user_limit = $pdo->prepare($sql_user_limit);
 $stmt_user_limit->execute([$user_id]);
 $employee_limit = (float) ($stmt_user_limit->fetchColumn() ?: 0);
 
-// Consumed limit = (Pending + Approved + Paid Requests) - (Total Invoices for those requests)
+// Consumed limit = (Total Requests) - (Total Invoices) - (Settled Surpluses credited back)
 $sql_consumed = "SELECT 
     (SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE employee_id = ? AND status IN ('Pending', 'Approved', 'Paid')) - 
     (SELECT IFNULL(SUM(pri.amount), 0) 
      FROM payment_request_invoices pri 
      JOIN payment_requests pr ON pri.payment_request_id = pr.id 
-     WHERE pr.employee_id = ? AND pr.status IN ('Pending', 'Approved', 'Paid')) as consumed";
+     WHERE pr.employee_id = ? AND pr.status IN ('Pending', 'Approved', 'Paid')) -
+    (SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(pri2.amount), 0) FROM payment_request_invoices pri2 WHERE pri2.payment_request_id = pr.id)), 0)
+     FROM payment_requests pr
+     WHERE pr.employee_id = ? AND pr.status = 'Paid' AND pr.voucher_approved_at IS NOT NULL) as consumed";
 $stmt_consumed = $pdo->prepare($sql_consumed);
-$stmt_consumed->execute([$user_id, $user_id]);
+$stmt_consumed->execute([$user_id, $user_id, $user_id]);
 $consumed_limit = (float) ($stmt_consumed->fetchColumn() ?: 0);
 
-$available_request_limit = max(0, $employee_limit - $consumed_limit);
+$available_request_limit = max(0, ($employee_limit - $consumed_limit));
 
 include 'includes/app_header.php';
 ?>
@@ -223,7 +230,6 @@ include 'includes/app_header.php';
                 style="font-size: 28px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">₹
                 <?php echo number_format($remaining_budget, 2); ?>
             </div>
-
         </div>
     </div>
     <div class="content-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">

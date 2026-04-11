@@ -26,7 +26,12 @@ $query = "SELECT
     e.name AS employee_name,
     COALESCE(SUM(CASE WHEN pr.status = 'Paid' THEN pr.amount ELSE 0 END), 0) AS total_advance,
     COALESCE(SUM(pri.amount), 0) AS total_voucher,
-    COALESCE(SUM(CASE WHEN pr.status = 'Paid' THEN pr.amount ELSE 0 END), 0) - COALESCE(SUM(pri.amount), 0) AS set_off
+    (SELECT COALESCE(SUM(pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)), 0)
+     FROM payment_requests pr3 
+     WHERE pr3.employee_id = e.id AND pr3.status = 'Paid' AND pr3.voucher_approved_at IS NOT NULL) AS set_off,
+    (SELECT COALESCE(SUM(CASE WHEN pr3.voucher_approved_at IS NULL THEN (pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)) ELSE 0 END), 0)
+     FROM payment_requests pr3 
+     WHERE pr3.employee_id = e.id AND pr3.status = 'Paid') AS total_pending
 FROM employees e
 INNER JOIN payment_requests pr ON e.id = pr.employee_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
@@ -95,6 +100,69 @@ $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 
 $stmt->execute();
 $records = $stmt->fetchAll();
+
+// Fetch breakdowns for each employee for the Cash in Hand / Utilization tags
+foreach ($records as &$row) {
+    $emp_id = $row['id'];
+    
+    // Settlements (Surpluses generated - using Gross)
+    $settSql = "SELECT pr.id, COALESCE(p.project_name, p.project_code) as project,
+                (pr.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id)) as surplus_amount
+                FROM payment_requests pr
+                JOIN projects p ON pr.project_id = p.id
+                WHERE pr.employee_id = :eid AND pr.status = 'Paid' AND pr.voucher_approved_at IS NOT NULL
+                ORDER BY pr.voucher_approved_at ASC";
+    $settStmt = $pdo->prepare($settSql);
+    $settStmt->execute([':eid' => $emp_id]);
+    $settlements = $settStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Consumptions (Credits used)
+    $consSql = "SELECT pr.id, COALESCE(p.project_name, p.project_code) as project, pr.used_set_off_amount
+                FROM payment_requests pr
+                JOIN projects p ON pr.project_id = p.id
+                WHERE pr.employee_id = :eid AND pr.status = 'Paid' AND pr.used_set_off_amount > 0
+                ORDER BY pr.created_at ASC";
+    $consStmt = $pdo->prepare($consSql);
+    $consStmt->execute([':eid' => $emp_id]);
+    $consumptions = $consStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $breakdown = [];
+    $total_consumed = array_sum(array_column($consumptions, 'used_set_off_amount'));
+    $consumed_pointer = 0;
+    
+    foreach ($settlements as $sett) {
+        $amt = $sett['surplus_amount'];
+        $status = "Cash in Hand";
+        $used_in = [];
+        
+        // Find which project(s) consumed this surplus using FIFO logic
+        // We simulate consumption against this specific surplus
+        static $global_consumed_so_far = 0; // Reset this logic or use a different approach
+    }
+    
+    // Cleaner FIFO implementation
+    $temp_consumed = $total_consumed;
+    foreach ($settlements as $sett) {
+        $amt = $sett['surplus_amount'];
+        if ($temp_consumed >= $amt) {
+            // Fully consumed. We need to find the project name.
+            // Simplified: Just find the latest consumption request project
+            $row_cons = array_pop($consumptions); 
+            $status = $row_cons ? $row_cons['project'] : "Utilized";
+            $temp_consumed -= $amt;
+        } elseif ($temp_consumed > 0) {
+            // Partially consumed
+            $row_cons = array_pop($consumptions);
+            $status = "Partial: " . ($row_cons ? $row_cons['project'] : "Utilized");
+            $temp_consumed = 0;
+        } else {
+            $status = "Cash in Hand";
+        }
+        $breakdown[] = ['amount' => $amt, 'status' => $status];
+    }
+    $row['status_breakdown'] = $breakdown;
+}
+unset($row);
 
 $current_page = 'report_employee';
 $page_title = 'Employee Wise Report';
@@ -176,6 +244,7 @@ include 'includes/app_header.php';
                         <th>Advance</th>
                         <th>Voucher</th>
                         <th>Set Off</th>
+                        <th>Pending</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -192,8 +261,28 @@ include 'includes/app_header.php';
                                 <td><span class="font-medium">₹<?php echo number_format($row['total_advance'], 2); ?></span></td>
                                 <td><span class="font-medium">₹<?php echo number_format($row['total_voucher'], 2); ?></span></td>
                                 <td>
-                                    <span class="font-medium" style="color: <?php echo $row['set_off'] > 0 ? '#ef4444' : '#059669'; ?>;">
+                                    <div class="font-medium" style="color: #059669; margin-bottom: 4px;">
                                         ₹<?php echo number_format(abs($row['set_off']), 2); ?>
+                                    </div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                        <?php if (isset($row['status_breakdown'])): ?>
+                                            <?php foreach ($row['status_breakdown'] as $item): ?>
+                                                <?php if ($item['status'] === 'Cash in Hand'): ?>
+                                                    <span class="status-badge status-paid" style="font-size: 10px; padding: 2px 6px;">
+                                                        ₹<?php echo number_format($item['amount'], 0); ?>: Cash in Hand
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span class="status-badge" style="background: #eff6ff; color: #1e40af; border-color: #bfdbfe; font-size: 10px; padding: 2px 6px;">
+                                                        ₹<?php echo number_format($item['amount'], 0); ?>: <?php echo htmlspecialchars($item['status']); ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="font-medium" style="color: <?php echo $row['total_pending'] > 0 ? '#ef4444' : '#059669'; ?>;">
+                                        ₹<?php echo number_format($row['total_pending'], 2); ?>
                                     </span>
                                 </td>
 
@@ -201,7 +290,7 @@ include 'includes/app_header.php';
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                                 No records found.
                             </td>
                         </tr>

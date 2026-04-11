@@ -42,7 +42,13 @@ $query = "SELECT
     SUM(CASE WHEN pr.cost_center LIKE '%aarya%' 
         AND pri.expense_type NOT IN ('ACCOMMODATION', 'MATERIAL EXPENSES', 'FOOD & REFRESHMENT', 'Travel Expenses', 'LABOUR')
         AND (pri.expense_subtype <> 'Hotel' OR pri.expense_subtype IS NULL)
-        THEN pri.amount ELSE 0 END) AS aarya_bill
+        THEN pri.amount ELSE 0 END) AS aarya_bill,
+    (SELECT COALESCE(SUM(pr4.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr4.id)), 0)
+     FROM payment_requests pr4 
+     WHERE pr4.project_id = p.id AND pr4.status = 'Paid' AND pr4.voucher_approved_at IS NOT NULL) AS total_set_off,
+    (SELECT COALESCE(SUM(CASE WHEN pr3.voucher_approved_at IS NULL THEN (pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)) ELSE 0 END), 0)
+     FROM payment_requests pr3 
+     WHERE pr3.project_id = p.id AND pr3.status = 'Paid') AS total_pending
 FROM projects p
 INNER JOIN payment_requests pr ON p.id = pr.project_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
@@ -189,6 +195,7 @@ include 'includes/app_header.php';
                         <th style="text-align: right;">Labour</th>
                         <th style="text-align: right;">Contract</th>
                         <th style="text-align: right;">Aarya</th>
+                        <th style="text-align: right;">Set Off</th>
                         <th style="text-align: right;">Grand Total</th>
                         <th style="text-align: right;">Difference</th>
                     </tr>
@@ -198,12 +205,12 @@ include 'includes/app_header.php';
                         <?php 
                         $adv_total = 0; $hotel_total = 0; $mat_total = 0; $refresh_total = 0;
                         $travel_total = 0; $labour_total = 0; $contract_total = 0; $aarya_total = 0;
-                        $g_total = 0; $diff_total = 0;
+                        $set_off_total = 0; $g_total = 0; $diff_total = 0;
 
                         foreach ($records as $row): 
                             $grand_total = $row['hotel_bill'] + $row['material_bill'] + $row['refreshments_bill'] + 
                                           $row['traveling_bill'] + $row['labour_bill'] + $row['contract_bill'] + $row['aarya_bill'];
-                            $difference = $row['total_advance'] - $grand_total;
+                            $difference = $row['total_pending'];
                             
                             $adv_total += $row['total_advance'];
                             $hotel_total += $row['hotel_bill'];
@@ -213,6 +220,7 @@ include 'includes/app_header.php';
                             $labour_total += $row['labour_bill'];
                             $contract_total += $row['contract_bill'];
                             $aarya_total += $row['aarya_bill'];
+                            $set_off_total += $row['total_set_off'];
                             $g_total += $grand_total;
                             $diff_total += $difference;
                         ?>
@@ -226,6 +234,7 @@ include 'includes/app_header.php';
                                 <td style="text-align: right;">₹<?php echo number_format($row['labour_bill'], 2); ?></td>
                                 <td style="text-align: right; font-weight: 500;">₹<?php echo number_format($row['contract_bill'], 2); ?></td>
                                 <td style="text-align: right; font-weight: 500;">₹<?php echo number_format($row['aarya_bill'], 2); ?></td>
+                                <td style="text-align: right; color: #059669; font-weight: 500;">₹<?php echo number_format($row['total_set_off'], 2); ?></td>
                                 <td style="text-align: right; font-weight: 700;">₹<?php echo number_format($grand_total, 2); ?></td>
                                 <td style="text-align: right; color: <?php echo $difference < 0 ? '#dc2626' : '#16a34a'; ?>; font-weight: 700;">
                                     ₹<?php echo number_format($difference, 2); ?>
@@ -234,7 +243,7 @@ include 'includes/app_header.php';
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="11" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            <td colspan="12" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                                 No records found.
                             </td>
                         </tr>
@@ -252,6 +261,7 @@ include 'includes/app_header.php';
                         <td style="padding: 12px 24px; text-align: right; font-weight: 700;">₹<?php echo number_format($labour_total, 2); ?></td>
                         <td style="padding: 12px 24px; text-align: right; font-weight: 700;">₹<?php echo number_format($contract_total, 2); ?></td>
                         <td style="padding: 12px 24px; text-align: right; font-weight: 700;">₹<?php echo number_format($aarya_total, 2); ?></td>
+                        <td style="padding: 12px 24px; text-align: right; font-weight: 700; color: #059669;">₹<?php echo number_format($set_off_total, 2); ?></td>
                         <td style="padding: 12px 24px; text-align: right; font-weight: 800; color: var(--text-primary);">₹<?php echo number_format($g_total, 2); ?></td>
                         <td style="padding: 12px 24px; text-align: right; font-weight: 800; color: <?php echo $diff_total < 0 ? '#dc2626' : '#16a34a'; ?>;">
                             ₹<?php echo number_format($diff_total, 2); ?>
@@ -389,7 +399,7 @@ include 'includes/app_header.php';
         doc.text('From Period: ' + fromText + '    To Period: ' + toText, 14, 31);
 
         const table = document.querySelector('.data-table-container table');
-        const headers = [['Project Name', 'Adv', 'Hotel', 'Matrial', 'Refresh', 'Travel', 'Labour', 'Contr', 'Aarya', 'Total', 'Diff']];
+        const headers = [['Project Name', 'Adv', 'Hotel', 'Matrial', 'Refresh', 'Travel', 'Labour', 'Contr', 'Aarya', 'Set Off', 'Total', 'Diff']];
         const rows = [];
         table.querySelectorAll('tbody tr').forEach(tr => {
             const row = [];

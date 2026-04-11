@@ -82,17 +82,35 @@ $stmt_user_limit = $pdo->prepare($sql_user_limit);
 $stmt_user_limit->execute([$user_id]);
 $employee_limit = (float) ($stmt_user_limit->fetchColumn() ?: 0);
 
+// Consumed limit = (Total Requests) - (Total Invoices) - (Settled Surpluses credited back)
 $sql_consumed = "SELECT 
     (SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE employee_id = ? AND status IN ('Pending', 'Approved', 'Paid')) - 
     (SELECT IFNULL(SUM(pri.amount), 0) 
      FROM payment_request_invoices pri 
      JOIN payment_requests pr ON pri.payment_request_id = pr.id 
-     WHERE pr.employee_id = ? AND pr.status IN ('Pending', 'Approved', 'Paid')) as consumed";
+     WHERE pr.employee_id = ? AND pr.status IN ('Pending', 'Approved', 'Paid')) -
+    (SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(pri2.amount), 0) FROM payment_request_invoices pri2 WHERE pri2.payment_request_id = pr.id)), 0)
+     FROM payment_requests pr
+     WHERE pr.employee_id = ? AND pr.status = 'Paid' AND pr.voucher_approved_at IS NOT NULL) as consumed";
 $stmt_consumed = $pdo->prepare($sql_consumed);
-$stmt_consumed->execute([$user_id, $user_id]);
+$stmt_consumed->execute([$user_id, $user_id, $user_id]);
 $consumed_limit = (float) ($stmt_consumed->fetchColumn() ?: 0);
 
-$available_request_limit = max(0, $employee_limit - $consumed_limit);
+// Calculate Available Set-Off Credit (Surplus not yet reused)
+$sql_surplus_total = "SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id)), 0)
+                      FROM payment_requests pr
+                      WHERE pr.employee_id = ? AND pr.status = 'Paid' AND pr.voucher_approved_at IS NOT NULL";
+$stmt_surplus_total = $pdo->prepare($sql_surplus_total);
+$stmt_surplus_total->execute([$user_id]);
+$total_surplus = (float) $stmt_surplus_total->fetchColumn();
+
+$sql_used_all = "SELECT IFNULL(SUM(used_set_off_amount), 0) FROM payment_requests WHERE employee_id = ?";
+$stmt_used_all = $pdo->prepare($sql_used_all);
+$stmt_used_all->execute([$user_id]);
+$total_used_credit = (float) $stmt_used_all->fetchColumn();
+
+$available_set_off_credit = max(0, $total_surplus - $total_used_credit);
+$available_request_limit = max(0, ($employee_limit - $consumed_limit));
 
 $page_title = 'Payment Requests';
 $current_page = 'payments';
@@ -241,7 +259,10 @@ include 'includes/app_header.php';
                             Type</th>
                         <th
                             style="text-align: left; padding: 16px 24px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
-                            Amount</th>
+                            Requested Amt</th>
+                        <th
+                            style="text-align: left; padding: 16px 24px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
+                            Net Payable</th>
                         <th
                             style="text-align: left; padding: 16px 24px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
                             Pending Voucher</th>
@@ -283,18 +304,29 @@ include 'includes/app_header.php';
                                     <?php echo htmlspecialchars($request['cost_center'] ?: 'General'); ?>
                                 </span>
                             </td>
-                            <td style="padding: 16px 24px; font-size: 14px; font-weight: 700; color: var(--text-primary);">₹
+                            <td style="padding: 16px 24px; font-size: 14px; font-weight: 500; color: var(--text-secondary);">₹
                                 <?php echo number_format($request['amount'], 2); ?>
                             </td>
-                            <td style="padding: 16px 24px; font-size: 14px; font-weight: 600; color: <?php echo ($request['amount'] - $request['invoiced_amount']) > 0 ? '#d97706' : '#16a34a'; ?>;">
-                                <?php 
-                                if ($request['status'] === 'Pending' || $request['status'] === 'Rejected') {
-                                    echo '<span style="color: #94a3b8; font-weight: 400;">-</span>';
-                                } else {
-                                    echo '₹ ' . number_format($request['amount'] - $request['invoiced_amount'], 2); 
-                                }
-                                ?>
+                            <td style="padding: 16px 24px;">
+                                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);">₹
+                                    <?php echo number_format($request['net_payable_amount'] ?: $request['amount'], 2); ?>
+                                </div>
+                                <?php if ($request['used_set_off_amount'] > 0): ?>
+                                    <div style="font-size: 10px; color: #16a34a; font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 4px;">
+                                        <i class="ph ph-handshake" style="font-size: 12px;"></i>
+                                        ₹<?php echo number_format($request['used_set_off_amount'], 2); ?> Credit Used
+                                    </div>
+                                <?php endif; ?>
                             </td>
+                             <td style="padding: 16px 24px; font-size: 14px; font-weight: 600; color: <?php echo (!empty($request['voucher_approved_at']) || ($request['amount'] - $request['invoiced_amount']) <= 0) ? '#16a34a' : '#d97706'; ?>;">
+                                 <?php 
+                                 if ($request['status'] === 'Pending' || $request['status'] === 'Rejected' || !empty($request['voucher_approved_at'])) {
+                                     echo '<span style="color: #94a3b8; font-weight: 400;">-</span>';
+                                 } else {
+                                     echo '₹ ' . number_format($request['amount'] - $request['invoiced_amount'], 2); 
+                                 }
+                                 ?>
+                             </td>
                             <td style="padding: 16px 24px; font-size: 14px; color: var(--text-secondary);">
                                 <?php echo date('M d, Y', strtotime($request['request_date'])); ?>
                             </td>
@@ -446,6 +478,20 @@ include 'includes/app_header.php';
                                 max="<?php echo $available_request_limit; ?>"
                                 style="width: 100%; padding: 10px 12px 10px 32px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; color: var(--text-primary); outline: none;">
                         </div>
+
+                        <?php if ($available_set_off_credit > 0): ?>
+                        <div id="netPayableContainer" style="display: none; margin-top: 12px; padding: 10px; background: #f0fdf4; border-radius: 8px; border: 1px dashed #22c55e;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 12px; color: #166534; font-weight: 500;">Net Payable (after Set-Off)</span>
+                                <span id="netPayableAmountDisplay" style="font-size: 14px; color: #166534; font-weight: 700;">₹0.00</span>
+                            </div>
+                            <div style="font-size: 10px; color: #16a34a; margin-top: 2px;">
+                                <i class="ph ph-info" style="font-size: 12px;"></i>
+                                Automatically using up to ₹<?php echo number_format($available_set_off_credit, 2); ?> from your settled balance.
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
                         <?php if ($available_request_limit <= 0): ?>
                             <div
                                 style="margin-top: 8px; font-size: 11px; color: #dc2626; font-weight: 500; display: flex; align-items: center; gap: 4px;">
@@ -567,6 +613,23 @@ include 'includes/app_header.php';
             const amountInput = document.getElementById('requestAmountInput');
             const limitBadge = document.getElementById('availableLimitBadge');
             const employeeLimit = <?php echo (float)$available_request_limit; ?>;
+            const availableCredit = <?php echo (float)$available_set_off_credit; ?>;
+            const netPayableContainer = document.getElementById('netPayableContainer');
+            const netPayableDisplay = document.getElementById('netPayableAmountDisplay');
+
+            if (amountInput) {
+                amountInput.addEventListener('input', function() {
+                    const val = parseFloat(this.value) || 0;
+                    if (availableCredit > 0 && val > 0 && netPayableContainer) {
+                        const usedCredit = Math.min(val, availableCredit);
+                        const netPayable = val - usedCredit;
+                        netPayableContainer.style.display = 'block';
+                        netPayableDisplay.textContent = '₹' + netPayable.toLocaleString('en-IN', {minimumFractionDigits: 2});
+                    } else if (netPayableContainer) {
+                        netPayableContainer.style.display = 'none';
+                    }
+                });
+            }
 
             function updateAvailableLimit() {
                 const projectId = projectSelect ? projectSelect.value : null;

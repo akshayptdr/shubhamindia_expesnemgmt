@@ -29,7 +29,13 @@ $query = "SELECT
     SUM(CASE WHEN pr.cost_center LIKE '%aarya%' 
         AND pri.expense_type NOT IN ('ACCOMMODATION', 'MATERIAL EXPENSES', 'FOOD & REFRESHMENT', 'Travel Expenses', 'LABOUR')
         AND (pri.expense_subtype <> 'Hotel' OR pri.expense_subtype IS NULL)
-        THEN pri.amount ELSE 0 END) AS aarya_bill
+        THEN pri.amount ELSE 0 END) AS aarya_bill,
+    (SELECT COALESCE(SUM(pr4.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr4.id)), 0)
+     FROM payment_requests pr4 
+     WHERE pr4.project_id = p.id AND pr4.status = 'Paid' AND pr4.voucher_approved_at IS NOT NULL) AS total_set_off,
+    (SELECT COALESCE(SUM(CASE WHEN pr3.voucher_approved_at IS NULL THEN (pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)) ELSE 0 END), 0)
+     FROM payment_requests pr3 
+     WHERE pr3.project_id = p.id AND pr3.status = 'Paid') AS total_pending
 FROM projects p
 INNER JOIN payment_requests pr ON p.id = pr.project_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
@@ -86,16 +92,16 @@ if ($format === 'csv') {
     fputcsv($output, ['From Period: ' . $fromLabel, 'To Period: ' . $toLabel]);
     fputcsv($output, []);
     
-    fputcsv($output, ['Project Name', 'Adv', 'Hotel', 'Matrial', 'Refresh', 'Travel', 'Labour', 'Contr', 'Aarya', 'Total', 'Diff']);
+    fputcsv($output, ['Project Name', 'Adv', 'Hotel', 'Matrial', 'Refresh', 'Travel', 'Labour', 'Contr', 'Aarya', 'Set Off', 'Total', 'Diff']);
     
     $adv_total = 0; $hotel_total = 0; $mat_total = 0; $refresh_total = 0;
     $travel_total = 0; $labour_total = 0; $contract_total = 0; $aarya_total = 0;
-    $g_total = 0; $diff_total = 0;
+    $set_off_total = 0; $g_total = 0; $diff_total = 0;
 
     foreach ($records as $row) {
         $grand_total = $row['hotel_bill'] + $row['material_bill'] + $row['refreshments_bill'] + 
                       $row['traveling_bill'] + $row['labour_bill'] + $row['contract_bill'] + $row['aarya_bill'];
-        $difference = $row['total_advance'] - $grand_total;
+        $difference = $row['total_pending'];
         
         $adv_total += $row['total_advance'];
         $hotel_total += $row['hotel_bill'];
@@ -105,6 +111,7 @@ if ($format === 'csv') {
         $labour_total += $row['labour_bill'];
         $contract_total += $row['contract_bill'];
         $aarya_total += $row['aarya_bill'];
+        $set_off_total += $row['total_set_off'];
         $g_total += $grand_total;
         $diff_total += $difference;
 
@@ -118,6 +125,7 @@ if ($format === 'csv') {
             $row['labour_bill'],
             $row['contract_bill'],
             $row['aarya_bill'],
+            $row['total_set_off'],
             $grand_total,
             $difference
         ]);
@@ -125,7 +133,7 @@ if ($format === 'csv') {
 
     if (!empty($records)) {
         fputcsv($output, []);
-        fputcsv($output, ['TOTAL', $adv_total, $hotel_total, $mat_total, $refresh_total, $travel_total, $labour_total, $contract_total, $aarya_total, $g_total, $diff_total]);
+        fputcsv($output, ['TOTAL', $adv_total, $hotel_total, $mat_total, $refresh_total, $travel_total, $labour_total, $contract_total, $aarya_total, $set_off_total, $g_total, $diff_total]);
     }
     
     fclose($output);
@@ -152,7 +160,7 @@ if ($format === 'csv') {
     echo '<Table>' . "\n";
     
     echo '<Column ss:Width="200"/>';
-    for($i=0; $i<10; $i++) echo '<Column ss:Width="80"/>';
+    for($i=0; $i<11; $i++) echo '<Column ss:Width="80"/>';
     echo "\n";
 
     echo '<Row><Cell ss:StyleID="title"><Data ss:Type="String">Voucher Report</Data></Cell></Row>' . "\n";
@@ -160,7 +168,7 @@ if ($format === 'csv') {
     echo '<Row></Row>' . "\n";
     
     echo '<Row>';
-    $headers = ['Project Name', 'Adv', 'Hotel', 'Matrial', 'Refresh', 'Travel', 'Labour', 'Contr', 'Aarya', 'Total', 'Diff'];
+    $headers = ['Project Name', 'Adv', 'Hotel', 'Matrial', 'Refresh', 'Travel', 'Labour', 'Contr', 'Aarya', 'Set Off', 'Total', 'Diff'];
     foreach($headers as $h) {
         echo '<Cell ss:StyleID="header"><Data ss:Type="String">' . $h . '</Data></Cell>';
     }
@@ -168,12 +176,12 @@ if ($format === 'csv') {
 
     $adv_total = 0; $hotel_total = 0; $mat_total = 0; $refresh_total = 0;
     $travel_total = 0; $labour_total = 0; $contract_total = 0; $aarya_total = 0;
-    $g_total = 0; $diff_total = 0;
+    $set_off_total = 0; $g_total = 0; $diff_total = 0;
 
     foreach ($records as $row) {
         $grand_total = $row['hotel_bill'] + $row['material_bill'] + $row['refreshments_bill'] + 
                       $row['traveling_bill'] + $row['labour_bill'] + $row['contract_bill'] + $row['aarya_bill'];
-        $difference = $row['total_advance'] - $grand_total;
+        $difference = $row['total_pending'];
 
         $adv_total += $row['total_advance'];
         $hotel_total += $row['hotel_bill'];
@@ -183,6 +191,7 @@ if ($format === 'csv') {
         $labour_total += $row['labour_bill'];
         $contract_total += $row['contract_bill'];
         $aarya_total += $row['aarya_bill'];
+        $set_off_total += $row['total_set_off'];
         $g_total += $grand_total;
         $diff_total += $difference;
 
@@ -196,6 +205,7 @@ if ($format === 'csv') {
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $row['labour_bill'] . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $row['contract_bill'] . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $row['aarya_bill'] . '</Data></Cell>';
+        echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $row['total_set_off'] . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $grand_total . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $difference . '</Data></Cell>';
         echo '</Row>' . "\n";
@@ -213,6 +223,7 @@ if ($format === 'csv') {
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $labour_total . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $contract_total . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $aarya_total . '</Data></Cell>';
+        echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $set_off_total . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $g_total . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $diff_total . '</Data></Cell>';
         echo '</Row>' . "\n";
