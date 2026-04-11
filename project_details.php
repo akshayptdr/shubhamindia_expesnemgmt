@@ -46,15 +46,30 @@ $stmt_logs->execute([$project_id]);
 $budget_logs = $stmt_logs->fetchAll();
 
 // Fetch Associated Payment Requests
-$sql_payments = "SELECT pr.*, e.name as employee_name, e.avatar as employee_avatar 
+$sql_payments = "SELECT pr.*, e.name as employee_name, e.avatar as employee_avatar,
+                 (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id) as invoiced_amount
                  FROM payment_requests pr
                  LEFT JOIN employees e ON pr.employee_id = e.id
                  WHERE pr.project_id = ? 
-                 ORDER BY pr.request_date DESC 
-                 LIMIT 5";
+                 ORDER BY pr.request_date DESC";
 $stmt_payments = $pdo->prepare($sql_payments);
 $stmt_payments->execute([$project_id]);
 $associated_payments = $stmt_payments->fetchAll();
+
+// Fetch Set Off History
+$sql_set_off = "SELECT pr.*, e.name as employee_name, 
+                       so.name as set_off_by_name, 
+                       va.name as voucher_approved_by_name,
+                       (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id) as invoiced_amount
+                FROM payment_requests pr
+                LEFT JOIN employees e ON pr.employee_id = e.id
+                LEFT JOIN employees so ON pr.set_off_by = so.id
+                LEFT JOIN employees va ON pr.voucher_approved_by = va.id
+                WHERE pr.project_id = ? AND pr.set_off_at IS NOT NULL
+                ORDER BY pr.set_off_at DESC";
+$stmt_set_off = $pdo->prepare($sql_set_off);
+$stmt_set_off->execute([$project_id]);
+$set_off_history = $stmt_set_off->fetchAll();
 
 // Status and progress calculations
 $statusClass = 'status-' . strtolower(str_replace(' ', '-', $project['status']));
@@ -435,7 +450,7 @@ include 'includes/app_header.php';
                 <tbody>
                     <?php if (empty($associated_payments)): ?>
                         <tr>
-                            <td colspan="6"
+                            <td colspan="7"
                                 style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 14px;">No
                                 payment requests found for this project.</td>
                         </tr>
@@ -479,6 +494,81 @@ include 'includes/app_header.php';
                                 <td style="padding: 12px 8px; text-align: right;">
                                     <a href="payment_request_details.php?id=<?php echo $payment['id']; ?>"
                                         style="text-decoration: none;">
+                                        <i class="ph ph-eye" style="color: #94a3b8; cursor: pointer;"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Set Off History -->
+    <div class="detail-card"
+        style="background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px;">
+                <i class="ph ph-handshake" style="color: #d97706; font-size: 20px;"></i> Set Off History
+            </h2>
+        </div>
+
+        <div class="table-responsive">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <th style="text-align: left; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Request ID</th>
+                        <th style="text-align: left; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Set off Requested by</th>
+                        <th style="text-align: left; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Set Off Amount</th>
+                        <th style="text-align: left; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Set Off Req.</th>
+                        <th style="text-align: left; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Approved Date</th>
+                        <th style="text-align: left; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Approval by</th>
+                        <th style="text-align: left; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Status</th>
+                        <th style="text-align: right; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($set_off_history)): ?>
+                        <tr>
+                            <td colspan="8" style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 14px;">No set-off history found for this project.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($set_off_history as $so): 
+                            $balance = $so['amount'] - $so['invoiced_amount'];
+                        ?>
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 12px 8px; font-size: 13px; font-weight: 600; color: #1a56db;">
+                                    <?php echo htmlspecialchars($so['request_no']); ?>
+                                </td>
+                                <td style="padding: 12px 8px; font-size: 13px; color: var(--text-primary);">
+                                    <?php echo htmlspecialchars($so['set_off_by_name'] ?? 'System'); ?>
+                                </td>
+                                <td style="padding: 12px 8px; font-size: 13px; font-weight: 600; color: #d97706;">
+                                    ₹ <?php echo number_format($balance, 2); ?>
+                                </td>
+                                <td style="padding: 12px 8px; font-size: 13px; color: var(--text-secondary);">
+                                    <?php echo date('M d, Y', strtotime($so['set_off_at'])); ?>
+                                </td>
+                                <td style="padding: 12px 8px; font-size: 13px; color: var(--text-secondary);">
+                                    <?php echo !empty($so['voucher_approved_at']) ? date('M d, Y', strtotime($so['voucher_approved_at'])) : '<span style="color: #94a3b8; font-style: italic;">Pending</span>'; ?>
+                                </td>
+                                <td style="padding: 12px 8px; font-size: 13px; color: var(--text-secondary);">
+                                    <?php echo !empty($so['voucher_approved_by_name']) ? htmlspecialchars($so['voucher_approved_by_name']) : '<span style="color: #94a3b8; font-style: italic;">Pending</span>'; ?>
+                                </td>
+                                <td style="padding: 12px 8px;">
+                                    <?php if (!empty($so['voucher_approved_at'])): ?>
+                                        <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; background: #f0fdf4; color: #16a34a;">
+                                            Settled
+                                        </span>
+                                    <?php else: ?>
+                                        <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; background: #fffbeb; color: #d97706;">
+                                            Pending Review
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="padding: 12px 8px; text-align: right;">
+                                    <a href="payment_request_details.php?id=<?php echo $so['id']; ?>" style="text-decoration: none;">
                                         <i class="ph ph-eye" style="color: #94a3b8; cursor: pointer;"></i>
                                     </a>
                                 </td>

@@ -232,9 +232,6 @@ include 'includes/app_header.php';
                     <tr style="background: #fdfdfd; border-bottom: 1px solid var(--border-color);">
                         <th
                             style="text-align: left; padding: 16px 24px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
-                            Request ID</th>
-                        <th
-                            style="text-align: left; padding: 16px 24px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
                             Employee</th>
                         <th
                             style="text-align: left; padding: 16px 24px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
@@ -262,9 +259,6 @@ include 'includes/app_header.php';
                 <tbody>
                     <?php foreach ($requests as $request): ?>
                         <tr style="border-bottom: 1px solid var(--border-color);">
-                            <td style="padding: 16px 24px; font-size: 14px; font-weight: 600; color: #1a56db;">
-                                <?php echo htmlspecialchars($request['request_no']); ?>
-                            </td>
                             <td style="padding: 16px 24px;">
                                 <span style="font-size: 14px; font-weight: 500; color: var(--text-primary);">
                                     <?php echo htmlspecialchars($request['employee_name']); ?>
@@ -320,9 +314,38 @@ include 'includes/app_header.php';
                                     <?php echo $request['status']; ?>
                                 </span>
                             </td>
-                            <td style="padding: 16px 24px; text-align: right;">
+                            <td style="padding: 16px 24px; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 12px;">
+                                <?php 
+                                // Logic for Set Off / Approve buttons
+                                $pending_voucher = (float)$request['amount'] - (float)$request['invoiced_amount'];
+                                $current_user_id = (int)($_SESSION['user_id'] ?? 0);
+                                $current_user_role = trim($_SESSION['user_role'] ?? '');
+                                
+                                $is_requester = ($current_user_id === (int)$request['employee_id']);
+                                $is_accounts = in_array($current_user_role, ['Accounts Manager', 'Accounts Assistant']);
+                                $is_director = ($current_user_role === 'Director');
+
+                                if ($request['status'] === 'Paid' && $pending_voucher > 0): 
+                                    // Step 1: Set Off (Visible to Requester or Director)
+                                    if (empty($request['set_off_at']) && ($is_requester || $is_director)): ?>
+                                        <button onclick="settleVoucher(<?php echo $request['id']; ?>, 'set_off')" 
+                                                class="btn-settle-setoff" 
+                                                title="Initiate Set-Off">
+                                            Set Off
+                                        </button>
+                                    <?php 
+                                    // Step 2: Approve (Visible to Accounts or Director - AFTER Set Off is done)
+                                    elseif (!empty($request['set_off_at']) && empty($request['voucher_approved_at']) && ($is_accounts || $is_director)): ?>
+                                        <button onclick="settleVoucher(<?php echo $request['id']; ?>, 'approve_voucher')" 
+                                                class="btn-settle-approve" 
+                                                title="Approve Set Off">
+                                            Approve
+                                        </button>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+
                                 <a href="payment_request_details.php?id=<?php echo $request['id']; ?>"
-                                    style="display: inline-flex; margin-left: auto; text-decoration: none; color: #94a3b8;">
+                                    style="text-decoration: none; color: #94a3b8; display: inline-flex; align-items: center;">
                                     <i class="ph ph-eye" style="font-size: 20px;"></i>
                                 </a>
                             </td>
@@ -593,6 +616,66 @@ include 'includes/app_header.php';
             window.addEventListener('click', (e) => {
                 if (e.target === prModal) closePRModalFunc();
             });
+
+            // Voucher Settlement Function
+            window.settleVoucher = function(id, action) {
+                const label = action === 'set_off' ? 'Set Off' : 'Approve';
+                if (!confirm('Are you sure you want to ' + label + ' this request?')) return;
+                
+                fetch('handlers/update_payment_status.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id, status: action })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert(data.error || 'Failed to update settlement status.');
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    alert('An error occurred during ' + label + '.');
+                });
+            }
         });
     </script>
+    <style>
+        .btn-settle-setoff {
+            background: #fffbeb;
+            color: #d97706;
+            border: 1px solid #fde68a;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .btn-settle-setoff:hover {
+            background: #fef3c7;
+            border-color: #fcd34d;
+        }
+        .btn-settle-approve {
+            background: #f0fdf4;
+            color: #16a34a;
+            border: 1px solid #bbf7d0;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .btn-settle-approve:hover {
+            background: #dcfce7;
+            border-color: #86efac;
+        }
+    </style>
 <?php include 'includes/app_footer.php'; ?>

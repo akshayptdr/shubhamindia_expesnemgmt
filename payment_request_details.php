@@ -17,11 +17,15 @@ $request_id = (int) $_GET['id'];
 // Fetch payment request details
 $sql = "SELECT pr.*, e.name as employee_name, e.avatar as employee_avatar, e.role as employee_role,
                p.project_name, p.project_code, p.budget as project_budget,
-               r.name as reviewer_name
+               r.name as reviewer_name,
+               so.name as set_off_name,
+               va.name as voucher_approved_name
         FROM payment_requests pr
         LEFT JOIN employees e ON pr.employee_id = e.id
         LEFT JOIN projects p ON pr.project_id = p.id
         LEFT JOIN employees r ON pr.reviewed_by = r.id
+        LEFT JOIN employees so ON pr.set_off_by = so.id
+        LEFT JOIN employees va ON pr.voucher_approved_by = va.id
         WHERE pr.id = ?";
 $stmt = $pdo->prepare($sql);
 $stmt->execute([$request_id]);
@@ -268,10 +272,15 @@ include 'includes/app_header.php';
                     </div>
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <?php if ($_SESSION['user_id'] == $request['employee_id']): ?>
-                            <?php if ($request['status'] === 'Paid'): ?>
+                            <?php if ($request['status'] === 'Paid' && empty($request['voucher_approved_at'])): ?>
                                 <button class="btn-primary" onclick="openInvoiceModal()"
                                     style="background: #1a56db; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                                     <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
+                                </button>
+                            <?php elseif (!empty($request['voucher_approved_at'])): ?>
+                                <button class="btn-primary" disabled title="Settlement is already approved. No more invoices can be added."
+                                    style="background: #94a3b8; color: white; border: none; font-weight: 600; font-size: 13px; padding: 8px 16px; border-radius: 8px; cursor: not-allowed; display: flex; align-items: center; gap: 6px; opacity: 0.7;">
+                                    <i class="ph ph-lock" style="font-size: 16px;"></i> Settlement Finalized
                                 </button>
                             <?php else: ?>
                                 <button class="btn-primary" disabled title="Invoices can only be added after the payment is marked as 'Paid'"
@@ -279,7 +288,7 @@ include 'includes/app_header.php';
                                     <i class="ph ph-plus" style="font-size: 16px;"></i> Add New Invoice
                                 </button>
                             <?php endif; ?>
-                        <?php endif; ?>
+<?php endif; ?>
                     </div>
                 </div>
 
@@ -474,6 +483,65 @@ include 'includes/app_header.php';
                     </div>
                 </div>
             </div>
+
+            <!-- Set Off Progress Card -->
+            <?php if ($request['status'] === 'Paid' && ($request['amount'] - $total_invoiced_amount) > 0): ?>
+            <div class="card"
+                style="background: white; border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; margin-top: 24px;">
+                <h2 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0 0 20px 0;">Set Off Progress</h2>
+
+                <div style="display: flex; flex-direction: column; gap: 0; position: relative; padding-left: 36px;">
+                    <!-- Timeline Line -->
+                    <div
+                        style="position: absolute; left: 13px; top: 10px; bottom: 10px; width: 2px; background: #e2e8f0;">
+                    </div>
+
+                    <!-- Step 1: Set Off -->
+                    <div style="position: relative; padding-bottom: 24px;">
+                        <?php if (!empty($request['set_off_at'])): ?>
+                            <div
+                                style="position: absolute; left: -36px; top: 0; width: 28px; height: 28px; background: #d97706; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; z-index: 1;">
+                                <i class="ph ph-check" style="font-size: 14px;"></i>
+                            </div>
+                            <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Voucher Set Off (₹<?php echo number_format($request['amount'] - $total_invoiced_amount, 2); ?>)</div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+                                Completed by <?php echo htmlspecialchars($request['set_off_name'] ?? 'Authorized User'); ?> •
+                                <?php echo date('M d, H:i A', strtotime($request['set_off_at'])); ?>
+                            </div>
+                        <?php else: ?>
+                            <div
+                                style="position: absolute; left: -36px; top: 0; width: 28px; height: 28px; background: white; border: 2px solid #e2e8f0; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 1; color: #94a3b8;">
+                                <i class="ph ph-clock" style="font-size: 14px;"></i>
+                            </div>
+                            <div style="font-size: 13px; font-weight: 600; color: #64748b;">Voucher Set Off</div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Awaiting set off</div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Step 2: Voucher Approved -->
+                    <div style="position: relative;">
+                        <?php if (!empty($request['voucher_approved_at'])): ?>
+                            <div
+                                style="position: absolute; left: -36px; top: 0; width: 28px; height: 28px; background: #16a34a; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; z-index: 1;">
+                                <i class="ph ph-check" style="font-size: 14px;"></i>
+                            </div>
+                            <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Settlement Approved</div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+                                Approved by <?php echo htmlspecialchars($request['voucher_approved_name'] ?? 'Authorized User'); ?> •
+                                <?php echo date('M d, H:i A', strtotime($request['voucher_approved_at'])); ?>
+                            </div>
+                        <?php else: ?>
+                            <div
+                                style="position: absolute; left: -36px; top: 0; width: 28px; height: 28px; background: white; border: 2px solid #e2e8f0; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 1; color: #94a3b8;">
+                                <i class="ph ph-clock" style="font-size: 14px;"></i>
+                            </div>
+                            <div style="font-size: 13px; font-weight: 600; color: #64748b;">Settlement Approved</div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Awaiting final voucher clearance</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Quick Audit Card Removed -->
         </div>
