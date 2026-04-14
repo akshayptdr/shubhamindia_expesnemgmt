@@ -60,9 +60,9 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                 Employees
             </a>
             <?php endif; ?>
-            <div class="nav-dropdown <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee']) ? 'open' : ''; ?>">
+            <div class="nav-dropdown <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee', 'report_sales_order']) ? 'open' : ''; ?>">
                 <button class="nav-item nav-dropdown-toggle" onclick="toggleDropdown(this)">
-                    <i class="ph <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee']) ? 'ph-fill' : ''; ?> ph-chart-bar"></i>
+                    <i class="ph <?php echo in_array($current_page, ['reports', 'report_voucher', 'report_project_cost', 'report_employee', 'report_sales_order']) ? 'ph-fill' : ''; ?> ph-chart-bar"></i>
                     Reports
                     <i class="ph ph-caret-down nav-dropdown-arrow"></i>
                 </button>
@@ -73,6 +73,9 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                     </a>
                     <a href="report_project_cost.php" class="nav-sub-item <?php echo $current_page === 'report_project_cost' ? 'active' : ''; ?>">
                         Project Cost
+                    </a>
+                    <a href="report_sales_order.php" class="nav-sub-item <?php echo $current_page === 'report_sales_order' ? 'active' : ''; ?>">
+                        Sales Order Report
                     </a>
                     <?php endif; ?>
                     <a href="report_employee.php" class="nav-sub-item <?php echo $current_page === 'report_employee' ? 'active' : ''; ?>">

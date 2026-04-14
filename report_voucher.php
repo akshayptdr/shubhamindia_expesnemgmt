@@ -24,12 +24,34 @@ $perPage = 10;
 $projStmt = $pdo->query("SELECT id, COALESCE(project_name, project_code) AS display_name FROM projects ORDER BY COALESCE(project_name, project_code) ASC");
 $allProjects = $projStmt->fetchAll();
 
+// Fetch all employees for dropdown
+$empStmt = $pdo->query("SELECT id, name FROM employees WHERE status = 'Active' ORDER BY name ASC");
+$allEmployees = $empStmt->fetchAll();
+
+$employee_ids = isset($_GET['employee_ids']) ? array_map('intval', (array) $_GET['employee_ids']) : [];
+$employee_ids = array_filter($employee_ids, function($id) { return $id > 0; });
+
+$where = [];
+$params = [];
+
+$emp_subquery_clause = "";
+if (!empty($employee_ids)) {
+    $placeholders = [];
+    foreach ($employee_ids as $idx => $eid) {
+        $key = ':emp_' . $idx;
+        $placeholders[] = $key;
+        $params[$key] = $eid;
+    }
+    $emp_subquery_clause = " AND employee_id IN (" . implode(',', $placeholders) . ")";
+    $where[] = "pr.employee_id IN (" . implode(',', $placeholders) . ")";
+}
+
 // Build query
 // Columns: Hotel Bill, Matrial, Refreshments, Traveling, Labour, Contract, Aarya
 $query = "SELECT 
     p.id,
     COALESCE(p.project_name, p.project_code) AS project_name,
-    (SELECT COALESCE(SUM(pr2.amount), 0) FROM payment_requests pr2 WHERE pr2.project_id = p.id AND pr2.status = 'Paid') AS total_advance,
+    (SELECT COALESCE(SUM(pr_sub1.amount), 0) FROM payment_requests pr_sub1 WHERE pr_sub1.project_id = p.id AND pr_sub1.status = 'Paid' $emp_subquery_clause) AS total_advance,
     SUM(CASE WHEN (pri.expense_subtype = 'Hotel' OR pri.expense_type = 'ACCOMMODATION') THEN pri.amount ELSE 0 END) AS hotel_bill,
     SUM(CASE WHEN pri.expense_type = 'MATERIAL EXPENSES' THEN pri.amount ELSE 0 END) AS material_bill,
     SUM(CASE WHEN pri.expense_type = 'FOOD & REFRESHMENT' THEN pri.amount ELSE 0 END) AS refreshments_bill,
@@ -43,12 +65,12 @@ $query = "SELECT
         AND pri.expense_type NOT IN ('ACCOMMODATION', 'MATERIAL EXPENSES', 'FOOD & REFRESHMENT', 'Travel Expenses', 'LABOUR')
         AND (pri.expense_subtype <> 'Hotel' OR pri.expense_subtype IS NULL)
         THEN pri.amount ELSE 0 END) AS aarya_bill,
-    (SELECT COALESCE(SUM(pr4.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr4.id)), 0)
-     FROM payment_requests pr4 
-     WHERE pr4.project_id = p.id AND pr4.status = 'Paid' AND pr4.voucher_approved_at IS NOT NULL) AS total_set_off,
-    (SELECT COALESCE(SUM(CASE WHEN pr3.voucher_approved_at IS NULL THEN (pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)) ELSE 0 END), 0)
-     FROM payment_requests pr3 
-     WHERE pr3.project_id = p.id AND pr3.status = 'Paid') AS total_pending
+    (SELECT COALESCE(SUM(pr_sub4.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr_sub4.id)), 0)
+     FROM payment_requests pr_sub4 
+     WHERE pr_sub4.project_id = p.id AND pr_sub4.status = 'Paid' AND pr_sub4.voucher_approved_at IS NOT NULL $emp_subquery_clause) AS total_set_off,
+    (SELECT COALESCE(SUM(CASE WHEN pr_sub3.voucher_approved_at IS NULL THEN (pr_sub3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr_sub3.id)) ELSE 0 END), 0)
+     FROM payment_requests pr_sub3 
+     WHERE pr_sub3.project_id = p.id AND pr_sub3.status = 'Paid' $emp_subquery_clause) AS total_pending
 FROM projects p
 INNER JOIN payment_requests pr ON p.id = pr.project_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
@@ -57,9 +79,6 @@ $countQuery = "SELECT COUNT(DISTINCT p.id)
 FROM projects p
 INNER JOIN payment_requests pr ON p.id = pr.project_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
-
-$where = [];
-$params = [];
 
 if (!empty($project_ids)) {
     $placeholders = [];
@@ -143,21 +162,46 @@ include 'includes/app_header.php';
         <div class="form-group" style="flex: 0 0 auto;">
             <label class="form-label">Project</label>
             <div class="multi-select-dropdown" id="projectDropdown" style="width: 250px;">
-                <div class="multi-select-trigger" onclick="toggleMultiSelect()">
+                <div class="multi-select-trigger" onclick="toggleMultiSelect('projectDropdown')">
                     <span class="multi-select-label" id="multiSelectLabel">All Projects</span>
                     <i class="ph ph-caret-down multi-select-arrow"></i>
                 </div>
                 <div class="multi-select-menu" id="multiSelectMenu">
                     <div class="multi-select-search">
-                        <input type="text" placeholder="Search..." id="projSearchInput" oninput="filterProjects()">
+                        <input type="text" placeholder="Search..." id="projSearchInput" oninput="filterOptions('projectDropdown', 'projSearchInput')">
                     </div>
-                    <div class="multi-select-options" id="multiSelectOptions">
+                    <div class="multi-select-options">
                         <?php foreach ($allProjects as $proj): ?>
                             <label class="multi-select-option">
                                 <input type="checkbox" name="project_ids[]" value="<?php echo $proj['id']; ?>"
                                     <?php echo in_array($proj['id'], $project_ids) ? 'checked' : ''; ?>
-                                    onchange="updateLabel()">
+                                    onchange="updateLabel('projectDropdown', 'All Projects')">
                                 <span><?php echo htmlspecialchars($proj['display_name']); ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group" style="flex: 0 0 auto;">
+            <label class="form-label">Employee</label>
+            <div class="multi-select-dropdown" id="employeeDropdown" style="width: 250px;">
+                <div class="multi-select-trigger" onclick="toggleMultiSelect('employeeDropdown')">
+                    <span class="multi-select-label" id="employeeSelectLabel">All Employees</span>
+                    <i class="ph ph-caret-down multi-select-arrow"></i>
+                </div>
+                <div class="multi-select-menu">
+                    <div class="multi-select-search">
+                        <input type="text" placeholder="Search..." id="empSearchInput" oninput="filterOptions('employeeDropdown', 'empSearchInput')">
+                    </div>
+                    <div class="multi-select-options">
+                        <?php foreach ($allEmployees as $emp): ?>
+                            <label class="multi-select-option">
+                                <input type="checkbox" name="employee_ids[]" value="<?php echo $emp['id']; ?>"
+                                    <?php echo in_array($emp['id'], $employee_ids) ? 'checked' : ''; ?>
+                                    onchange="updateLabel('employeeDropdown', 'All Employees')">
+                                <span><?php echo htmlspecialchars($emp['name']); ?></span>
                             </label>
                         <?php endforeach; ?>
                     </div>
@@ -282,6 +326,7 @@ include 'includes/app_header.php';
                 <?php
                     $projParams = '';
                     foreach ($project_ids as $pid) { $projParams .= '&project_ids[]=' . $pid; }
+                    foreach ($employee_ids as $eid) { $projParams .= '&employee_ids[]=' . $eid; }
                 ?>
                 <?php if ($page > 1): ?>
                     <a href="?page=<?php echo $page - 1; ?><?php echo $projParams; ?>&from_period=<?php echo urlencode($from_period); ?>&to_period=<?php echo urlencode($to_period); ?>" class="page-btn"><i class="ph ph-caret-left"></i></a>
@@ -338,26 +383,30 @@ include 'includes/app_header.php';
 </style>
 
 <script>
-    function toggleMultiSelect() { document.getElementById('projectDropdown').classList.toggle('open'); }
+    function toggleMultiSelect(id) { document.getElementById(id).classList.toggle('open'); }
     document.addEventListener('click', function(e) {
-        const dd = document.getElementById('projectDropdown');
-        if (dd && !dd.contains(e.target)) { dd.classList.remove('open'); }
+        document.querySelectorAll('.multi-select-dropdown').forEach(dd => {
+            if (!dd.contains(e.target)) { dd.classList.remove('open'); }
+        });
     });
-    function updateLabel() {
-        const checked = document.querySelectorAll('#multiSelectOptions input[type="checkbox"]:checked');
-        const label = document.getElementById('multiSelectLabel');
-        if (checked.length === 0) { label.textContent = 'All Projects'; }
+    function updateLabel(id, defaultText) {
+        const dd = document.getElementById(id);
+        const checked = dd.querySelectorAll('.multi-select-options input[type="checkbox"]:checked');
+        const label = dd.querySelector('.multi-select-label');
+        if (checked.length === 0) { label.textContent = defaultText; }
         else if (checked.length === 1) { label.textContent = checked[0].parentElement.querySelector('span').textContent.trim(); }
-        else { label.textContent = checked.length + ' projects selected'; }
+        else { label.textContent = checked.length + ' selected'; }
     }
-    function filterProjects() {
-        const search = document.getElementById('projSearchInput').value.toLowerCase();
-        document.querySelectorAll('.multi-select-option').forEach(opt => {
+    function filterOptions(id, searchId) {
+        const dd = document.getElementById(id);
+        const search = document.getElementById(searchId).value.toLowerCase();
+        dd.querySelectorAll('.multi-select-option').forEach(opt => {
             const name = opt.querySelector('span').textContent.toLowerCase();
             opt.style.display = name.includes(search) ? 'flex' : 'none';
         });
     }
-    updateLabel();
+    updateLabel('projectDropdown', 'All Projects');
+    updateLabel('employeeDropdown', 'All Employees');
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -366,8 +415,10 @@ include 'includes/app_header.php';
 <script>
     function getFilterParams() {
         let params = '';
-        const checkboxes = document.querySelectorAll('#multiSelectOptions input[type="checkbox"]:checked');
-        checkboxes.forEach(cb => { params += '&project_ids[]=' + cb.value; });
+        const projChecks = document.querySelectorAll('#projectDropdown input[type="checkbox"]:checked');
+        projChecks.forEach(cb => { params += '&project_ids[]=' + cb.value; });
+        const empChecks = document.querySelectorAll('#employeeDropdown input[type="checkbox"]:checked');
+        empChecks.forEach(cb => { params += '&employee_ids[]=' + cb.value; });
         const from = document.querySelector('input[name="from_period"]');
         const to = document.querySelector('input[name="to_period"]');
         if (from && from.value) params += '&from_period=' + encodeURIComponent(from.value);

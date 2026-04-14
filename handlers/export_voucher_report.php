@@ -11,12 +11,29 @@ $from_period = isset($_GET['from_period']) ? $_GET['from_period'] : '';
 $to_period = isset($_GET['to_period']) ? $_GET['to_period'] : '';
 $project_ids = isset($_GET['project_ids']) ? array_map('intval', (array) $_GET['project_ids']) : [];
 $project_ids = array_filter($project_ids, function($id) { return $id > 0; });
+$employee_ids = isset($_GET['employee_ids']) ? array_map('intval', (array) $_GET['employee_ids']) : [];
+$employee_ids = array_filter($employee_ids, function($id) { return $id > 0; });
+
+$where = [];
+$params = [];
+
+$emp_subquery_clause = "";
+if (!empty($employee_ids)) {
+    $placeholders = [];
+    foreach ($employee_ids as $idx => $eid) {
+        $key = ':emp_' . $idx;
+        $placeholders[] = $key;
+        $params[$key] = $eid;
+    }
+    $emp_subquery_clause = " AND employee_id IN (" . implode(',', $placeholders) . ")";
+    $where[] = "pr.employee_id IN (" . implode(',', $placeholders) . ")";
+}
 
 // Build query
 $query = "SELECT 
     p.id,
     COALESCE(p.project_name, p.project_code) AS project_name,
-    (SELECT COALESCE(SUM(pr2.amount), 0) FROM payment_requests pr2 WHERE pr2.project_id = p.id AND pr2.status = 'Paid') AS total_advance,
+    (SELECT COALESCE(SUM(pr_sub1.amount), 0) FROM payment_requests pr_sub1 WHERE pr_sub1.project_id = p.id AND pr_sub1.status = 'Paid' $emp_subquery_clause) AS total_advance,
     SUM(CASE WHEN (pri.expense_subtype = 'Hotel' OR pri.expense_type = 'ACCOMMODATION') THEN pri.amount ELSE 0 END) AS hotel_bill,
     SUM(CASE WHEN pri.expense_type = 'MATERIAL EXPENSES' THEN pri.amount ELSE 0 END) AS material_bill,
     SUM(CASE WHEN pri.expense_type = 'FOOD & REFRESHMENT' THEN pri.amount ELSE 0 END) AS refreshments_bill,
@@ -30,18 +47,15 @@ $query = "SELECT
         AND pri.expense_type NOT IN ('ACCOMMODATION', 'MATERIAL EXPENSES', 'FOOD & REFRESHMENT', 'Travel Expenses', 'LABOUR')
         AND (pri.expense_subtype <> 'Hotel' OR pri.expense_subtype IS NULL)
         THEN pri.amount ELSE 0 END) AS aarya_bill,
-    (SELECT COALESCE(SUM(pr4.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr4.id)), 0)
-     FROM payment_requests pr4 
-     WHERE pr4.project_id = p.id AND pr4.status = 'Paid' AND pr4.voucher_approved_at IS NOT NULL) AS total_set_off,
-    (SELECT COALESCE(SUM(CASE WHEN pr3.voucher_approved_at IS NULL THEN (pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)) ELSE 0 END), 0)
-     FROM payment_requests pr3 
-     WHERE pr3.project_id = p.id AND pr3.status = 'Paid') AS total_pending
+    (SELECT COALESCE(SUM(pr_sub4.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr_sub4.id)), 0)
+     FROM payment_requests pr_sub4 
+     WHERE pr_sub4.project_id = p.id AND pr_sub4.status = 'Paid' AND pr_sub4.voucher_approved_at IS NOT NULL $emp_subquery_clause) AS total_set_off,
+    (SELECT COALESCE(SUM(CASE WHEN pr_sub3.voucher_approved_at IS NULL THEN (pr_sub3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr_sub3.id)) ELSE 0 END), 0)
+     FROM payment_requests pr_sub3 
+     WHERE pr_sub3.project_id = p.id AND pr_sub3.status = 'Paid' $emp_subquery_clause) AS total_pending
 FROM projects p
 INNER JOIN payment_requests pr ON p.id = pr.project_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
-
-$where = [];
-$params = [];
 
 if (!empty($project_ids)) {
     $placeholders = [];

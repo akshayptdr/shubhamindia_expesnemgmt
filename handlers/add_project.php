@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $project_name = $_POST['project_name'] ?? null;
     $project_code = $_POST['project_code'] ?? '';
     $location = $_POST['location'] ?? '';
+    $sales_order_value = $_POST['sales_order_value'] ?? 0;
     $budget = $_POST['budget'] ?? 0;
     $start_date = $_POST['start_date'] ?? null;
     $end_date = $_POST['end_date'] ?? null;
@@ -26,10 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 1. Insert Project
         $created_by = $_SESSION['user_id'];
-        $sql = "INSERT INTO projects (activity_type, project_category, service_type, project_name, project_code, location, budget, start_date, end_date, project_manager_id, created_by, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')";
+        $sql = "INSERT INTO projects (activity_type, project_category, service_type, project_name, project_code, location, sales_order_value, budget, start_date, end_date, project_manager_id, created_by, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$activity_type, $project_category, $service_type, $project_name, $project_code, $location, $budget, $start_date, $end_date, $project_manager_id, $created_by]);
+        $stmt->execute([$activity_type, $project_category, $service_type, $project_name, $project_code, $location, $sales_order_value, $budget, $start_date, $end_date, $project_manager_id, $created_by]);
         $project_id = $pdo->lastInsertId();
 
         // 2. Insert Expenses

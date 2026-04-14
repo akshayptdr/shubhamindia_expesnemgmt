@@ -298,6 +298,15 @@ include 'includes/app_header.php';
                 <div class="meta-item">
                     <div class="meta-label"
                         style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+                        Sales Order Value</div>
+                    <div class="meta-value"
+                        style="font-size: 15px; font-weight: 600; color: #16a34a; display: flex; align-items: center; gap: 6px;">
+                        ₹ <?php echo number_format($project['sales_order_value'], 2); ?>
+                    </div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-label"
+                        style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
                         Project Manager</div>
                     <div class="meta-value"
                         style="font-size: 15px; font-weight: 500; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">

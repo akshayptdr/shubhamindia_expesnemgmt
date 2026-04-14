@@ -192,6 +192,7 @@ include 'includes/app_header.php';
                         <th>ACTIVITY TYPE</th>
                         <th>PROJECT CODE</th>
                         <th>LOCATION</th>
+                        <th>SALES VALUE</th>
                         <th>BUDGET</th>
                         <th>UTILIZED BUDGET</th>
                         <th>STATUS</th>
@@ -243,6 +244,7 @@ include 'includes/app_header.php';
                                     <?php echo htmlspecialchars($project['location']); ?>
                                 </div>
                             </td>
+                            <td><span style="font-weight: 600; color: #16a34a;">₹ <?php echo number_format($project['sales_order_value'] ?? 0); ?></span></td>
                             <td><span class="budget-value">₹ <?php echo number_format($project['budget']); ?></span>
                             </td>
                             <td>
@@ -446,6 +448,16 @@ include 'includes/app_header.php';
                         <i class="ph ph-map-pin"
                             style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
                         <input type="text" name="location" placeholder="Enter site address" required class="form-input"
+                            style="padding-left: 40px;">
+                    </div>
+                </div>
+
+                <div class="form-group" style="grid-column: span 2;">
+                    <label>Sales Order Value</label>
+                    <div class="input-with-icon" style="position: relative;">
+                        <i class="ph ph-currency-inr"
+                            style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                        <input type="number" step="0.01" name="sales_order_value" placeholder="0.00" class="form-input"
                             style="padding-left: 40px;">
                     </div>
                 </div>
