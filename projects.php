@@ -22,7 +22,7 @@ $sql = "SELECT p.*, e.name as manager_name, e.avatar as manager_avatar, c.name a
                   (SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE project_id = p.id AND status IN ('Approved', 'Paid')) - 
                   (SELECT IFNULL(SUM(pr2.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr2.id)), 0)
                    FROM payment_requests pr2
-                   WHERE pr2.project_id = p.id AND pr2.status = 'Paid' AND pr2.voucher_approved_at IS NOT NULL)
+                   WHERE pr2.project_id = p.id AND pr2.status = 'Paid' AND pr2.set_off_at IS NOT NULL)
                ) as utilized_budget
         FROM projects p 
         LEFT JOIN employees e ON p.project_manager_id = e.id

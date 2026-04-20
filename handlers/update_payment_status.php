@@ -34,7 +34,7 @@ if ($status === 'Paid') {
 
 try {
     // Check if request exists and get requester role
-    $stmt = $pdo->prepare("SELECT pr.status, pr.project_id, pr.amount, pr.employee_id, e.role as requester_role 
+    $stmt = $pdo->prepare("SELECT pr.status, pr.project_id, pr.amount, pr.employee_id, pr.net_payable_amount, e.role as requester_role 
                           FROM payment_requests pr 
                           JOIN employees e ON pr.employee_id = e.id 
                           WHERE pr.id = ?");
@@ -167,23 +167,34 @@ try {
         }
     }
 
+    // Auto-Transition to PAID if Net Payable is 0 on approval
+    $is_auto_paid = false;
+    if ($status === 'Approved' && (float)$request['net_payable_amount'] <= 0) {
+        $status = 'Paid';
+        $is_auto_paid = true;
+    }
+
     // Update status and reviewed_by
     $sql = "UPDATE payment_requests SET status = ?, reviewed_by = ?";
     $params = [$status, $reviewerId];
 
-    if ($status === 'Approved') {
+    if ($status === 'Approved' || $is_auto_paid) {
         $sql .= ", approved_at = NOW()";
     }
 
     if ($status === 'Paid') {
         $sql .= ", paid_at = NOW()";
-        if (isset($data['reference'])) {
-            $sql .= ", payment_reference = ?";
-            $params[] = $data['reference'];
-        }
-        if (isset($data['mode'])) {
-            $sql .= ", payment_method = ?";
-            $params[] = $data['mode'];
+        if ($is_auto_paid) {
+            $sql .= ", payment_method = 'Auto Set-Off', payment_reference = 'Settled via Credit'";
+        } else {
+            if (isset($data['reference'])) {
+                $sql .= ", payment_reference = ?";
+                $params[] = $data['reference'];
+            }
+            if (isset($data['mode'])) {
+                $sql .= ", payment_method = ?";
+                $params[] = $data['mode'];
+            }
         }
     }
 

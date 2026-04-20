@@ -91,7 +91,7 @@ $sql_consumed = "SELECT
      WHERE pr.employee_id = ? AND pr.status IN ('Pending', 'Approved', 'Paid')) -
     (SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(pri2.amount), 0) FROM payment_request_invoices pri2 WHERE pri2.payment_request_id = pr.id)), 0)
      FROM payment_requests pr
-     WHERE pr.employee_id = ? AND pr.status = 'Paid' AND pr.voucher_approved_at IS NOT NULL) as consumed";
+     WHERE pr.employee_id = ? AND pr.status = 'Paid' AND pr.set_off_at IS NOT NULL) as consumed";
 $stmt_consumed = $pdo->prepare($sql_consumed);
 $stmt_consumed->execute([$user_id, $user_id, $user_id]);
 $consumed_limit = (float) ($stmt_consumed->fetchColumn() ?: 0);
@@ -99,7 +99,7 @@ $consumed_limit = (float) ($stmt_consumed->fetchColumn() ?: 0);
 // Calculate Available Set-Off Credit (Surplus not yet reused)
 $sql_surplus_total = "SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id)), 0)
                       FROM payment_requests pr
-                      WHERE pr.employee_id = ? AND pr.status = 'Paid' AND pr.voucher_approved_at IS NOT NULL";
+                      WHERE pr.employee_id = ? AND pr.status = 'Paid' AND pr.set_off_at IS NOT NULL";
 $stmt_surplus_total = $pdo->prepare($sql_surplus_total);
 $stmt_surplus_total->execute([$user_id]);
 $total_surplus = (float) $stmt_surplus_total->fetchColumn();
@@ -635,14 +635,15 @@ include 'includes/app_header.php';
                 const projectId = projectSelect ? projectSelect.value : null;
                 const requestType = typeSelect ? typeSelect.value : null;
                 
+                // The main badge should always show the Personal Limit - Unbilled Cash as per user requirement
+                limitBadge.textContent = 'Available: ₹' + employeeLimit.toLocaleString('en-IN', {minimumFractionDigits: 2});
+                
                 if (!projectId) {
-                    limitBadge.textContent = 'Available: ₹' + employeeLimit.toLocaleString('en-IN', {minimumFractionDigits: 2});
                     amountInput.max = employeeLimit;
                     return;
                 }
 
-                limitBadge.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i> Checking Budget...';
-                
+                // We still check the project budget in the background to set the input max and show warnings
                 let fetchUrl = 'handlers/get_project_budget.php?project_id=' + projectId;
                 if (requestType) {
                     fetchUrl += '&request_type=' + encodeURIComponent(requestType);
@@ -655,21 +656,22 @@ include 'includes/app_header.php';
                             const projectRemaining = data.remaining_budget;
                             const finalAvailable = Math.min(employeeLimit, projectRemaining);
                             
-                            limitBadge.textContent = 'Available: ₹' + finalAvailable.toLocaleString('en-IN', {minimumFractionDigits: 2});
                             amountInput.max = finalAvailable;
                             
-                            if (projectRemaining <= 0) {
-                                limitBadge.style.background = '#fef2f2';
-                                limitBadge.style.color = '#dc2626';
+                            // If project budget is the limiting factor, we can show a small warning but keep the main badge as personal
+                            if (projectRemaining < employeeLimit) {
+                                prError.querySelector('.error-text').textContent = 'Note: This project/category has a remaining budget of only ₹' + projectRemaining.toLocaleString('en-IN', {minimumFractionDigits: 2});
+                                prError.style.display = 'flex';
+                                prError.style.background = '#fffbeb';
+                                prError.style.color = '#d97706';
+                                prError.style.borderColor = '#fde68a';
                             } else {
-                                limitBadge.style.background = '#f0fdf4';
-                                limitBadge.style.color = '#16a34a';
+                                prError.style.display = 'none';
                             }
                         }
                     })
                     .catch(err => {
                         console.error('Error fetching budget:', err);
-                        limitBadge.textContent = 'Available: ₹' + employeeLimit.toLocaleString('en-IN', {minimumFractionDigits: 2});
                     });
             }
 

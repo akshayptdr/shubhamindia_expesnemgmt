@@ -52,8 +52,14 @@ try {
     $project_budget = (float) ($project_data['budget'] ?? 0);
     $project_name = $project_data['project_name'] ?? 'Unknown Project';
 
-    $stmt_proj_consumed = $pdo->prepare("SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE project_id = ? AND status != 'Rejected'");
-    $stmt_proj_consumed->execute([$project_id]);
+    $sql_proj_consumed = "SELECT 
+        IFNULL(SUM(amount), 0) - 
+        IFNULL((SELECT SUM(pr2.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr2.id))
+                FROM payment_requests pr2
+                WHERE pr2.project_id = ? AND pr2.status = 'Paid' AND pr2.set_off_at IS NOT NULL), 0)
+        FROM payment_requests WHERE project_id = ? AND status != 'Rejected'";
+    $stmt_proj_consumed = $pdo->prepare($sql_proj_consumed);
+    $stmt_proj_consumed->execute([$project_id, $project_id]);
     $project_consumed = (float) $stmt_proj_consumed->fetchColumn();
 
     $project_remaining = max(0, $project_budget - $project_consumed);
@@ -70,8 +76,14 @@ try {
         $category_budget = (float) ($stmt_cat->fetchColumn() ?: 0);
 
         if ($category_budget > 0) {
-            $stmt_cat_consumed = $pdo->prepare("SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE project_id = ? AND cost_center = ? AND status != 'Rejected'");
-            $stmt_cat_consumed->execute([$project_id, $request_type]);
+            $sql_cat_consumed = "SELECT 
+                IFNULL(SUM(amount), 0) - 
+                IFNULL((SELECT SUM(pr2.amount - (SELECT IFNULL(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr2.id))
+                        FROM payment_requests pr2
+                        WHERE pr2.project_id = ? AND pr2.cost_center = ? AND pr2.status = 'Paid' AND pr2.set_off_at IS NOT NULL), 0)
+                FROM payment_requests WHERE project_id = ? AND cost_center = ? AND status != 'Rejected'";
+            $stmt_cat_consumed = $pdo->prepare($sql_cat_consumed);
+            $stmt_cat_consumed->execute([$project_id, $request_type, $project_id, $request_type]);
             $category_consumed = (float) $stmt_cat_consumed->fetchColumn();
 
             $category_remaining = max(0, $category_budget - $category_consumed);
@@ -89,7 +101,7 @@ try {
                     FROM payment_requests pr
                     WHERE pr.employee_id = ? 
                       AND pr.status = 'Paid' 
-                      AND pr.voucher_approved_at IS NOT NULL";
+                      AND pr.set_off_at IS NOT NULL";
     $stmt_surplus = $pdo->prepare($sql_surplus);
     $stmt_surplus->execute([$employee_id]);
     $total_surplus = (float) $stmt_surplus->fetchColumn();
