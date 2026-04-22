@@ -26,11 +26,21 @@ $allProjects = $projStmt->fetchAll();
 
 // Build query
 $query = "SELECT 
-    id,
-    COALESCE(project_name, project_code) AS project_name,
-    budget AS total_budget,
-    sales_order_value
-FROM projects";
+    p.id,
+    COALESCE(p.project_name, p.project_code) AS project_name,
+    p.budget AS total_budget,
+    p.sales_order_value,
+    e.name AS project_manager,
+    ((SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE project_id = p.id AND status IN ('Approved', 'Paid')) - 
+     (SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(inv.amount), 0) FROM payment_request_invoices inv WHERE inv.payment_request_id = pr.id)), 0)
+      FROM payment_requests pr
+      WHERE pr.project_id = p.id AND pr.status = 'Paid' AND pr.set_off_at IS NOT NULL)) as utilized_budget,
+    (SELECT IFNULL(SUM(pri.amount), 0) 
+     FROM payment_request_invoices pri 
+     JOIN payment_requests pr ON pri.payment_request_id = pr.id 
+     WHERE pr.project_id = p.id AND pr.status IN ('Pending', 'Approved', 'Paid')) as voucher_amount
+FROM projects p
+LEFT JOIN employees e ON p.project_manager_id = e.id";
 
 $countQuery = "SELECT COUNT(*) FROM projects";
 
@@ -162,42 +172,90 @@ include 'includes/app_header.php';
                 <thead>
                     <tr>
                         <th>Project Name</th>
+                        <th>Project Manager</th>
                         <th style="text-align: right;">Sales Order Value</th>
-                        <th style="text-align: right;">Budget</th>
-                        <th style="text-align: right;">% of SO vs Budget</th>
+                        <th style="text-align: right;">Project Cost</th>
+                        <th style="text-align: right;">Advance</th>
+                        <th style="text-align: right;">Voucher</th>
+                        <th style="text-align: right;">Project Cost / Sales Order Value</th>
+                        <th style="text-align: right;">Advance / Sales Order Value</th>
+                        <th style="text-align: right;">Voucher / Sales Order Value</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (count($records) > 0): ?>
+                        <?php 
+                            $total_sov = 0;
+                            $total_cost = 0;
+                            $total_advance = 0;
+                            $total_voucher = 0;
+                        ?>
                         <?php foreach ($records as $row): ?>
-                            <?php 
-                                $so_val = $row['sales_order_value'];
-                                $budget = $row['total_budget'];
-                                $percentage = ($so_val > 0) ? ($budget / $so_val) * 100 : 0;
-                            ?>
-                            <tr>
-                                <td>
-                                    <span class="font-medium"><?php echo htmlspecialchars($row['project_name']); ?></span>
-                                </td>
-                                <td style="text-align: right;">
-                                    <span class="font-medium" style="color: #16a34a;">₹<?php echo number_format($so_val, 2); ?></span>
-                                </td>
-                                <td style="text-align: right;">
-                                    <span class="font-medium">₹<?php echo number_format($budget, 2); ?></span>
-                                </td>
-                                <td style="text-align: right;">
-                                    <span class="font-medium" style="color: #4f46e5;"><?php echo number_format($percentage, 2); ?>%</span>
-                                </td>
-                            </tr>
+                                <?php 
+                                    $so_val = $row['sales_order_value'];
+                                    $budget = $row['total_budget'];
+                                    $utilized = $row['utilized_budget'];
+                                    $voucher = $row['voucher_amount'];
+
+                                    $total_sov += $so_val;
+                                    $total_cost += $budget;
+                                    $total_advance += $utilized;
+                                    $total_voucher += $voucher;
+
+                                    $percentage_cost = ($so_val > 0) ? ($budget / $so_val) * 100 : 0;
+                                    $percentage_advance = ($so_val > 0) ? ($utilized / $so_val) * 100 : 0;
+                                    $percentage_voucher = ($so_val > 0) ? ($voucher / $so_val) * 100 : 0;
+                                ?>
+                                <tr>
+                                    <td>
+                                        <span class="font-medium"><?php echo htmlspecialchars($row['project_name']); ?></span>
+                                    </td>
+                                    <td>
+                                        <span class="text-secondary" style="font-size: 13px;"><?php echo htmlspecialchars($row['project_manager'] ?? 'Not Assigned'); ?></span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <span class="font-medium" style="color: #16a34a;">₹<?php echo number_format($so_val, 2); ?></span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <span class="font-medium">₹<?php echo number_format($budget, 2); ?></span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <span class="font-medium" style="color: #ef4444;">₹<?php echo number_format($utilized, 2); ?></span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <span class="font-medium" style="color: #0891b2;">₹<?php echo number_format($voucher, 2); ?></span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <span class="font-medium" style="color: #4f46e5;"><?php echo number_format($percentage_cost, 2); ?>%</span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <span class="font-medium" style="color: #9333ea;"><?php echo number_format($percentage_advance, 2); ?>%</span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <span class="font-medium" style="color: #0d9488;"><?php echo number_format($percentage_voucher, 2); ?>%</span>
+                                    </td>
+                                </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            <td colspan="9" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                                 No records found.
                             </td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
+                <?php if (count($records) > 0): ?>
+                    <tfoot style="background: #f8fafc; border-top: 2px solid #e2e8f0; font-weight: 700;">
+                        <tr>
+                            <td colspan="2" style="text-align: left; padding: 12px;">GRAND TOTAL</td>
+                            <td style="text-align: right; color: #16a34a;">₹<?php echo number_format($total_sov, 2); ?></td>
+                            <td style="text-align: right;">₹<?php echo number_format($total_cost, 2); ?></td>
+                            <td style="text-align: right; color: #ef4444;">₹<?php echo number_format($total_advance, 2); ?></td>
+                            <td style="text-align: right; color: #0891b2;">₹<?php echo number_format($total_voucher, 2); ?></td>
+                            <td colspan="3"></td>
+                        </tr>
+                    </tfoot>
+                <?php endif; ?>
             </table>
         </div>
 
@@ -328,7 +386,7 @@ include 'includes/app_header.php';
         doc.text('From Period: ' + fromText + '    To Period: ' + toText, 14, 31);
 
         const table = document.querySelector('.data-table-container table');
-        const headers = [['Project Name', 'Sales Value (Rs.)', 'Budget (Rs.)', '% of SO vs Budget']];
+        const headers = [['Project Name', 'Project Manager', 'Sales Value (Rs.)', 'Project Cost (Rs.)', 'Advance (Rs.)', 'Voucher (Rs.)', 'Project Cost / SOV', 'Advance / SOV', 'Voucher / SOV']];
         const rows = [];
 
         table.querySelectorAll('tbody tr').forEach(tr => {
@@ -341,17 +399,36 @@ include 'includes/app_header.php';
             if (row.length > 0 && row[0] !== 'No records found.') rows.push(row);
         });
 
+        // Get footer totals
+        const footerRows = [];
+        const tfootRow = table.querySelector('tfoot tr');
+        if (tfootRow) {
+            const row = [];
+            tfootRow.querySelectorAll('td').forEach(td => {
+                let text = td.textContent.trim();
+                text = text.replace(/₹/g, '').replace(/,/g, '').trim();
+                row.push(text);
+            });
+            footerRows.push(row);
+        }
+
         doc.autoTable({
             head: headers,
             body: rows,
+            foot: footerRows.length ? footerRows : null,
             startY: 38,
-            styles: { fontSize: 10, cellPadding: 4 },
+            styles: { fontSize: 8, cellPadding: 2 },
             headStyles: { fillColor: [26, 86, 219], textColor: 255, fontStyle: 'bold' },
+            footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: 'bold' },
             alternateRowStyles: { fillColor: [249, 250, 251] },
             columnStyles: {
-                1: { halign: 'right' },
                 2: { halign: 'right' },
-                3: { halign: 'right' }
+                3: { halign: 'right' },
+                4: { halign: 'right' },
+                5: { halign: 'right' },
+                6: { halign: 'right' },
+                7: { halign: 'right' },
+                8: { halign: 'right' }
             },
             margin: { left: 14, right: 14 }
         });

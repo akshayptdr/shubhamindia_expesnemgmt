@@ -14,10 +14,20 @@ $project_ids = array_filter($project_ids, function($id) { return $id > 0; });
 
 // Build query
 $query = "SELECT 
-    COALESCE(project_name, project_code) AS project_name,
-    budget AS total_budget,
-    sales_order_value
-FROM projects";
+    COALESCE(p.project_name, p.project_code) AS project_name,
+    p.budget AS total_budget,
+    p.sales_order_value,
+    e.name AS project_manager,
+    ((SELECT IFNULL(SUM(amount), 0) FROM payment_requests WHERE project_id = p.id AND status IN ('Approved', 'Paid')) - 
+     (SELECT IFNULL(SUM(pr.amount - (SELECT IFNULL(SUM(inv.amount), 0) FROM payment_request_invoices inv WHERE inv.payment_request_id = pr.id)), 0)
+      FROM payment_requests pr
+      WHERE pr.project_id = p.id AND pr.status = 'Paid' AND pr.set_off_at IS NOT NULL)) as utilized_budget,
+    (SELECT IFNULL(SUM(pri.amount), 0) 
+     FROM payment_request_invoices pri 
+     JOIN payment_requests pr ON pri.payment_request_id = pr.id 
+     WHERE pr.project_id = p.id AND pr.status IN ('Pending', 'Approved', 'Paid')) as voucher_amount
+FROM projects p
+LEFT JOIN employees e ON p.project_manager_id = e.id";
 
 $where = [];
 $params = [];
@@ -71,20 +81,52 @@ if ($format === 'csv') {
     fputcsv($output, ['From Period: ' . $fromLabel, 'To Period: ' . $toLabel]);
     fputcsv($output, []);
     
-    fputcsv($output, ['Project Name', 'Sales Value (₹)', 'Budget (₹)', '% of SO vs Budget']);
+    fputcsv($output, ['Project Name', 'Project Manager', 'Sales Value (₹)', 'Project Cost (₹)', 'Advance (₹)', 'Voucher (₹)', 'Project Cost / Sales Order Value', 'Advance / Sales Order Value', 'Voucher / Sales Order Value']);
+    
+    $total_sov = 0;
+    $total_cost = 0;
+    $total_advance = 0;
+    $total_voucher = 0;
     
     foreach ($records as $row) {
         $so_val = $row['sales_order_value'];
         $budget = $row['total_budget'];
-        $percentage = ($so_val > 0) ? ($budget / $so_val) * 100 : 0;
+        $utilized = $row['utilized_budget'];
+        $voucher = $row['voucher_amount'];
+        
+        $total_sov += $so_val;
+        $total_cost += $budget;
+        $total_advance += $utilized;
+        $total_voucher += $voucher;
+        
+        $percentage_cost = ($so_val > 0) ? ($budget / $so_val) * 100 : 0;
+        $percentage_advance = ($so_val > 0) ? ($utilized / $so_val) * 100 : 0;
+        $percentage_voucher = ($so_val > 0) ? ($voucher / $so_val) * 100 : 0;
         
         fputcsv($output, [
             $row['project_name'],
+            $row['project_manager'] ?? 'Not Assigned',
             number_format($so_val, 2),
             number_format($budget, 2),
-            number_format($percentage, 2) . '%'
+            number_format($utilized, 2),
+            number_format($voucher, 2),
+            number_format($percentage_cost, 2) . '%',
+            number_format($percentage_advance, 2) . '%',
+            number_format($percentage_voucher, 2) . '%'
         ]);
     }
+
+    fputcsv($output, [
+        'GRAND TOTAL',
+        '',
+        number_format($total_sov, 2),
+        number_format($total_cost, 2),
+        number_format($total_advance, 2),
+        number_format($total_voucher, 2),
+        '',
+        '',
+        ''
+    ]);
     
     fclose($output);
     exit;
@@ -109,7 +151,7 @@ if ($format === 'csv') {
     echo '<Worksheet ss:Name="Sales Order Report">' . "\n";
     echo '<Table>' . "\n";
     
-    echo '<Column ss:Width="200"/><Column ss:Width="130"/><Column ss:Width="130"/><Column ss:Width="130"/>' . "\n";
+    echo '<Column ss:Width="200"/><Column ss:Width="150"/><Column ss:Width="130"/><Column ss:Width="130"/><Column ss:Width="130"/><Column ss:Width="130"/><Column ss:Width="180"/><Column ss:Width="180"/><Column ss:Width="180"/>' . "\n";
 
     echo '<Row><Cell ss:StyleID="title"><Data ss:Type="String">Sales Order Report</Data></Cell></Row>' . "\n";
     echo '<Row><Cell ss:StyleID="subtitle"><Data ss:Type="String">From Period: ' . $fromLabel . '    To Period: ' . $toLabel . '</Data></Cell></Row>' . "\n";
@@ -117,23 +159,60 @@ if ($format === 'csv') {
     
     echo '<Row>';
     echo '<Cell ss:StyleID="header"><Data ss:Type="String">Project Name</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Project Manager</Data></Cell>';
     echo '<Cell ss:StyleID="header"><Data ss:Type="String">Sales Value (₹)</Data></Cell>';
-    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Budget (₹)</Data></Cell>';
-    echo '<Cell ss:StyleID="header"><Data ss:Type="String">% of SO vs Budget</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Project Cost (₹)</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Advance (₹)</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Voucher (₹)</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Project Cost / Sales Order Value</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Advance / Sales Order Value</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">Voucher / Sales Order Value</Data></Cell>';
     echo '</Row>' . "\n";
+
+    $total_sov = 0;
+    $total_cost = 0;
+    $total_advance = 0;
+    $total_voucher = 0;
 
     foreach ($records as $row) {
         $so_val = $row['sales_order_value'];
         $budget = $row['total_budget'];
-        $percentage = ($so_val > 0) ? ($budget / $so_val) * 100 : 0;
+        $utilized = $row['utilized_budget'];
+        $voucher = $row['voucher_amount'];
+        
+        $total_sov += $so_val;
+        $total_cost += $budget;
+        $total_advance += $utilized;
+        $total_voucher += $voucher;
+        
+        $percentage_cost = ($so_val > 0) ? ($budget / $so_val) * 100 : 0;
+        $percentage_advance = ($so_val > 0) ? ($utilized / $so_val) * 100 : 0;
+        $percentage_voucher = ($so_val > 0) ? ($voucher / $so_val) * 100 : 0;
 
         echo '<Row>';
         echo '<Cell ss:StyleID="default"><Data ss:Type="String">' . htmlspecialchars($row['project_name']) . '</Data></Cell>';
+        echo '<Cell ss:StyleID="default"><Data ss:Type="String">' . htmlspecialchars($row['project_manager'] ?? 'Not Assigned') . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $so_val . '</Data></Cell>';
         echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $budget . '</Data></Cell>';
-        echo '<Cell ss:StyleID="default"><Data ss:Type="String">' . number_format($percentage, 2) . '%</Data></Cell>';
+        echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $row['utilized_budget'] . '</Data></Cell>';
+        echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $row['voucher_amount'] . '</Data></Cell>';
+        echo '<Cell ss:StyleID="default"><Data ss:Type="String">' . number_format($percentage_cost, 2) . '%</Data></Cell>';
+        echo '<Cell ss:StyleID="default"><Data ss:Type="String">' . number_format($percentage_advance, 2) . '%</Data></Cell>';
+        echo '<Cell ss:StyleID="default"><Data ss:Type="String">' . number_format($percentage_voucher, 2) . '%</Data></Cell>';
         echo '</Row>' . "\n";
     }
+
+    echo '<Row>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String">GRAND TOTAL</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String"></Data></Cell>';
+    echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $total_sov . '</Data></Cell>';
+    echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $total_cost . '</Data></Cell>';
+    echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $total_advance . '</Data></Cell>';
+    echo '<Cell ss:StyleID="money"><Data ss:Type="Number">' . $total_voucher . '</Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String"></Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String"></Data></Cell>';
+    echo '<Cell ss:StyleID="header"><Data ss:Type="String"></Data></Cell>';
+    echo '</Row>' . "\n";
 
     echo '</Table>' . "\n";
     echo '</Worksheet>' . "\n";
