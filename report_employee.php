@@ -21,24 +21,24 @@ $empStmt = $pdo->query("SELECT id, name FROM employees WHERE status = 'Active' O
 $allEmployees = $empStmt->fetchAll();
 
 // Build query - Employee wise report with advance, voucher, set off
-$query = "SELECT 
+$query = "SELECT
     e.id,
     e.name AS employee_name,
-    COALESCE(SUM(CASE WHEN pr.status = 'Paid' THEN pr.amount ELSE 0 END), 0) AS total_advance,
+    (SELECT COALESCE(SUM(pr2.amount), 0) FROM payment_requests pr2 WHERE pr2.employee_id = e.id AND pr2.status = 'Paid') AS total_advance,
     COALESCE(SUM(pri.amount), 0) AS total_voucher,
     (SELECT COALESCE(SUM(pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)), 0)
-     FROM payment_requests pr3 
+     FROM payment_requests pr3
      WHERE pr3.employee_id = e.id AND pr3.status = 'Paid' AND pr3.voucher_approved_at IS NOT NULL) AS set_off,
     (SELECT COALESCE(SUM(CASE WHEN pr3.voucher_approved_at IS NULL THEN (pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)) ELSE 0 END), 0)
-     FROM payment_requests pr3 
+     FROM payment_requests pr3
      WHERE pr3.employee_id = e.id AND pr3.status = 'Paid') AS total_pending
 FROM employees e
-INNER JOIN payment_requests pr ON e.id = pr.employee_id AND pr.status = 'Paid'
+LEFT JOIN payment_requests pr ON e.id = pr.employee_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
 
 $countQuery = "SELECT COUNT(DISTINCT e.id)
 FROM employees e
-INNER JOIN payment_requests pr ON e.id = pr.employee_id AND pr.status = 'Paid'
+LEFT JOIN payment_requests pr ON e.id = pr.employee_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
 
 $where = [];

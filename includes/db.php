@@ -1,15 +1,16 @@
 <?php
-$host = 'localhost';
-$db = 'expensemgmt';
-$user = 'root';
-$pass = 'root';
+// LOCAL
+// $host = 'localhost';
+// $db = 'expensemgmt';
+// $user = 'root';
+// $pass = 'root';
+
+// HOSTINGER LIVE
+$host = 'srv1826.hstgr.io';
+$db = 'u923266720_shubhamerp';
+$user = 'u923266720_shubhamerp';
+$pass = 'Shubhaminc.2018';
 $charset = 'utf8mb4';
-
-
-// $host = '127.0.0.1:3306';
-// $db = 'u262579928_shubhamerp';
-// $user = 'u262579928_shubhamerp';
-// $pass = 'Shubhamerp1';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 $options = [
