@@ -32,7 +32,7 @@ if (!empty($employee_ids)) {
 // Build query
 $query = "SELECT 
     p.id,
-    COALESCE(p.project_name, p.project_code) AS project_name,
+    COALESCE(NULLIF(TRIM(p.project_name), ''), NULLIF(TRIM(p.project_code), ''), CONCAT('Project #', p.id)) AS project_name,
     (SELECT COALESCE(SUM(pr_sub1.amount), 0) FROM payment_requests pr_sub1 WHERE pr_sub1.project_id = p.id AND pr_sub1.status = 'Paid' $emp_subquery_clause) AS total_advance,
     SUM(CASE WHEN (pri.expense_subtype = 'Hotel' OR pri.expense_type = 'ACCOMMODATION') THEN pri.amount ELSE 0 END) AS hotel_bill,
     SUM(CASE WHEN pri.expense_type = 'MATERIAL EXPENSES' THEN pri.amount ELSE 0 END) AS material_bill,

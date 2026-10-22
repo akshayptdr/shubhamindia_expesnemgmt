@@ -147,10 +147,12 @@ include 'includes/app_header.php';
                     style="background: white; border: 1px solid var(--border-color); color: var(--text-primary); font-weight: 500; padding: 10px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                     <i class="ph ph-arrow-clockwise"></i> Update Status
                 </button>
+                <?php if ($project['approval_status'] === 'Approved'): ?>
                 <button class="btn-secondary" id="openPaymentRequestModal"
                     style="background: white; border: 1px solid var(--border-color); color: var(--text-primary); font-weight: 500; padding: 10px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                     <i class="ph ph-receipt"></i> Request For Payment
                 </button>
+                <?php endif; ?>
                 <?php if (in_array($_SESSION['user_role'], ['Director', 'Project Manager', 'Senior Project Manager'])): ?>
                 <button class="btn-primary" id="openUpdateBudgetModal"
                     style="background: #1a56db; color: white; border: none; font-weight: 500; padding: 10px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
@@ -160,6 +162,42 @@ include 'includes/app_header.php';
             <?php endif; ?>
         </div>
     </div>
+
+    <?php if ($project['approval_status'] === 'Pending'): ?>
+        <div style="background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div>
+                <strong>Awaiting Director approval.</strong>
+                Payment requests cannot be raised for this project until its budget is approved.
+            </div>
+            <?php if ($_SESSION['user_role'] === 'Director'): ?>
+                <div style="display: flex; gap: 12px;">
+                    <form action="handlers/approve_project.php" method="POST" style="margin: 0;">
+                        <input type="hidden" name="project_id" value="<?php echo $project_id; ?>">
+                        <button type="submit"
+                            style="background: #16a34a; color: white; border: none; font-weight: 500; padding: 10px 16px; border-radius: 8px; cursor: pointer;">
+                            <i class="ph ph-check"></i> Approve
+                        </button>
+                    </form>
+                    <form action="handlers/reject_project.php" method="POST" style="margin: 0;"
+                        onsubmit="var r = prompt('Reason for rejecting this project:'); if (!r || !r.trim()) { return false; } this.approval_notes.value = r; return true;">
+                        <input type="hidden" name="project_id" value="<?php echo $project_id; ?>">
+                        <input type="hidden" name="approval_notes" value="">
+                        <button type="submit"
+                            style="background: #dc2626; color: white; border: none; font-weight: 500; padding: 10px 16px; border-radius: 8px; cursor: pointer;">
+                            <i class="ph ph-x"></i> Reject
+                        </button>
+                    </form>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php elseif ($project['approval_status'] === 'Rejected'): ?>
+        <div style="background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 16px 20px; border-radius: 12px; margin-bottom: 24px;">
+            <strong>Project budget rejected by Director.</strong>
+            <?php if (!empty($project['approval_notes'])): ?>
+                Reason: <?php echo htmlspecialchars($project['approval_notes']); ?>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
 
     <!-- KPI Cards -->
     <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px;">
@@ -322,6 +360,19 @@ include 'includes/app_header.php';
                         <?php echo htmlspecialchars($project['manager_name'] ?? 'Not Assigned'); ?>
                     </div>
                 </div>
+                <?php if (!empty($project['project_report_path'])): ?>
+                <div class="meta-item">
+                    <div class="meta-label"
+                        style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+                        Project Budget Report</div>
+                    <div class="meta-value" style="font-size: 15px; font-weight: 500;">
+                        <a href="<?php echo htmlspecialchars($project['project_report_path']); ?>" target="_blank"
+                            style="color: #1a56db; text-decoration: none; display: flex; align-items: center; gap: 6px;">
+                            <i class="ph ph-file-arrow-down"></i> View / Download
+                        </a>
+                    </div>
+                </div>
+                <?php endif; ?>
                 <div class="meta-item" style="display: flex; gap: 32px;">
                     <div>
                         <div class="meta-label"

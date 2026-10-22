@@ -22,15 +22,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $expense_types = $_POST['expense_type'] ?? [];
     $expense_amounts = $_POST['expense_amount'] ?? [];
 
+    $report_path = null;
+    $report_abs_path = null;
+
     try {
+        // Optional project budget report (PDF / Excel)
+        if (isset($_FILES['project_report']) && $_FILES['project_report']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $file = $_FILES['project_report'];
+            if ($file['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('Project report upload failed (error code ' . $file['error'] . ').');
+            }
+
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($extension, ['pdf', 'xls', 'xlsx'], true)) {
+                throw new Exception('Invalid report file type. Only PDF, XLS and XLSX are allowed.');
+            }
+            if ($file['size'] > 2 * 1024 * 1024) {
+                throw new Exception('Project report must be 2 MB or smaller.');
+            }
+
+            $uploadDir = '../uploads/project_reports/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+            }
+
+            $newFileName = 'proj_' . time() . '_' . uniqid() . '.' . $extension;
+            $report_abs_path = $uploadDir . $newFileName;
+            if (!move_uploaded_file($file['tmp_name'], $report_abs_path)) {
+                $report_abs_path = null;
+                throw new Exception('Failed to save uploaded project report.');
+            }
+            $report_path = 'uploads/project_reports/' . $newFileName;
+        }
+
         $pdo->beginTransaction();
 
         // 1. Insert Project
         $created_by = $_SESSION['user_id'];
-        $sql = "INSERT INTO projects (activity_type, project_category, service_type, project_name, project_code, location, sales_order_value, budget, start_date, end_date, project_manager_id, created_by, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')";
+        $sql = "INSERT INTO projects (activity_type, project_category, service_type, project_name, project_code, location, sales_order_value, budget, start_date, end_date, project_manager_id, created_by, status, project_report_path) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?)";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$activity_type, $project_category, $service_type, $project_name, $project_code, $location, $sales_order_value, $budget, $start_date, $end_date, $project_manager_id, $created_by]);
+        $stmt->execute([$activity_type, $project_category, $service_type, $project_name, $project_code, $location, $sales_order_value, $budget, $start_date, $end_date, $project_manager_id, $created_by, $report_path]);
         $project_id = $pdo->lastInsertId();
 
         // 2. Insert Expenses
@@ -61,7 +93,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
 
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ($report_abs_path && file_exists($report_abs_path)) {
+            unlink($report_abs_path);
+        }
         die("Error adding project: " . $e->getMessage());
     }
 } else {

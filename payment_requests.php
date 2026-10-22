@@ -73,7 +73,7 @@ $total_rows = $pdo->query($total_rows_query)->fetchColumn();
 $total_pages = ceil($total_rows / $limit);
 
 // Active projects for dropdown
-$active_projects = $pdo->query("SELECT id, project_name, project_code FROM projects WHERE status != 'Completed' ORDER BY id DESC")->fetchAll();
+$active_projects = $pdo->query("SELECT id, project_name, project_code FROM projects WHERE status != 'Completed' AND approval_status = 'Approved' ORDER BY id DESC")->fetchAll();
 
 // Calculate available payment request limit for the current user
 $user_id = $_SESSION['user_id'];

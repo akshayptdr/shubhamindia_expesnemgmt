@@ -46,9 +46,18 @@ try {
     }
 
     // Check project budget (overall)
-    $stmt_proj = $pdo->prepare("SELECT budget, project_name FROM projects WHERE id = ?");
+    $stmt_proj = $pdo->prepare("SELECT budget, project_name, approval_status FROM projects WHERE id = ?");
     $stmt_proj->execute([$project_id]);
     $project_data = $stmt_proj->fetch();
+
+    if (!$project_data) {
+        echo json_encode(['success' => false, 'message' => 'Project not found']);
+        exit;
+    }
+    if ($project_data['approval_status'] !== 'Approved') {
+        echo json_encode(['success' => false, 'message' => 'This project is not approved by the Director yet (status: ' . $project_data['approval_status'] . '). Payment requests are not allowed.']);
+        exit;
+    }
     $project_budget = (float) ($project_data['budget'] ?? 0);
     $project_name = $project_data['project_name'] ?? 'Unknown Project';
 

@@ -263,6 +263,11 @@ include 'includes/app_header.php';
                                 <span class="status-text <?php echo $statusClass; ?>">
                                     <?php echo htmlspecialchars($project['status']); ?>
                                 </span>
+                                <?php if ($project['approval_status'] !== 'Approved'): ?>
+                                    <div style="margin-top: 4px; font-size: 11px; font-weight: 600; color: <?php echo $project['approval_status'] === 'Rejected' ? '#dc2626' : '#d97706'; ?>;">
+                                        <?php echo $project['approval_status'] === 'Rejected' ? 'Budget Rejected' : 'Awaiting Approval'; ?>
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <div class="manager-info">
@@ -389,7 +394,7 @@ include 'includes/app_header.php';
             </button>
         </div>
 
-        <form id="project-form" action="handlers/add_project.php" method="POST" style="padding: 24px;">
+        <form id="project-form" action="handlers/add_project.php" method="POST" enctype="multipart/form-data" style="padding: 24px;">
             <div id="form-error-alert"
                 style="display: none; background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; font-size: 14px; align-items: flex-start; gap: 8px;">
                 <i class="ph ph-warning-circle"
@@ -533,6 +538,12 @@ include 'includes/app_header.php';
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+
+                <div class="form-group" style="grid-column: span 2;">
+                    <label>Project Budget Report <span style="font-weight: 400; color: var(--text-secondary);">(Optional)</span></label>
+                    <input type="file" name="project_report" accept=".pdf,.xls,.xlsx" class="form-input">
+                    <small style="color: var(--text-secondary);">PDF or Excel (.xls, .xlsx), max 2 MB.</small>
                 </div>
             </div>
 

@@ -21,14 +21,14 @@ $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
 $perPage = 10;
 
 // Fetch all projects for dropdown
-$projStmt = $pdo->query("SELECT id, COALESCE(project_name, project_code) AS display_name FROM projects ORDER BY COALESCE(project_name, project_code) ASC");
+$projStmt = $pdo->query("SELECT id, COALESCE(NULLIF(TRIM(project_name), ''), NULLIF(TRIM(project_code), ''), CONCAT('Project #', id)) AS display_name FROM projects ORDER BY COALESCE(NULLIF(TRIM(project_name), ''), NULLIF(TRIM(project_code), ''), CONCAT('Project #', id)) ASC");
 $allProjects = $projStmt->fetchAll();
 
 // Build query
 // Project Cost = budget, Advance = approved/paid payment requests, Vouchers = invoices against those requests
 $query = "SELECT 
     p.id,
-    COALESCE(p.project_name, p.project_code) AS project_name,
+    COALESCE(NULLIF(TRIM(p.project_name), ''), NULLIF(TRIM(p.project_code), ''), CONCAT('Project #', p.id)) AS project_name,
     p.budget AS project_cost,
     COALESCE(SUM(CASE WHEN pr.status = 'Paid' THEN pr.amount ELSE 0 END), 0) AS total_advance,
     COALESCE((SELECT SUM(pri2.amount) FROM payment_request_invoices pri2 

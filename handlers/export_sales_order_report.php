@@ -14,7 +14,7 @@ $project_ids = array_filter($project_ids, function($id) { return $id > 0; });
 
 // Build query
 $query = "SELECT 
-    COALESCE(p.project_name, p.project_code) AS project_name,
+    COALESCE(NULLIF(TRIM(p.project_name), ''), NULLIF(TRIM(p.project_code), ''), CONCAT('Project #', p.id)) AS project_name,
     p.budget AS total_budget,
     p.sales_order_value,
     e.name AS project_manager,
