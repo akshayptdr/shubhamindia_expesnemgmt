@@ -18,12 +18,14 @@ $request_id = (int) $_GET['id'];
 $sql = "SELECT pr.*, e.name as employee_name, e.avatar as employee_avatar, e.role as employee_role,
                p.project_name, p.project_code, p.budget as project_budget,
                r.name as reviewer_name,
+               pb.name as paid_by_name,
                so.name as set_off_name,
                va.name as voucher_approved_name
         FROM payment_requests pr
         LEFT JOIN employees e ON pr.employee_id = e.id
         LEFT JOIN projects p ON pr.project_id = p.id
         LEFT JOIN employees r ON pr.reviewed_by = r.id
+        LEFT JOIN employees pb ON pr.paid_by = pb.id
         LEFT JOIN employees so ON pr.set_off_by = so.id
         LEFT JOIN employees va ON pr.voucher_approved_by = va.id
         WHERE pr.id = ?";
@@ -467,7 +469,7 @@ include 'includes/app_header.php';
                             </div>
                             <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
                                 Processed by
-                                <?php echo htmlspecialchars($request['reviewer_name'] ?? 'System Administrator'); ?>
+                                <?php echo htmlspecialchars($request['paid_by_name'] ?? $request['reviewer_name'] ?? 'System Administrator'); ?>
                                 <?php if (!empty($request['paid_at'])): ?>
                                     • <?php echo date('M d, H:i A', strtotime($request['paid_at'])); ?>
                                 <?php endif; ?>

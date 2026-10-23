@@ -132,6 +132,22 @@ $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 $stmt->execute();
 $records = $stmt->fetchAll();
 
+// Query string used by the voucher pop-up so it matches the filters applied to this page
+$detailQs = '';
+foreach ($employee_ids as $eid) { $detailQs .= '&employee_ids[]=' . (int) $eid; }
+if ($from_period !== '') { $detailQs .= '&from_period=' . urlencode($from_period); }
+if ($to_period !== '') { $detailQs .= '&to_period=' . urlencode($to_period); }
+
+function voucher_amount_cell($amount, $project_id, $project_name, $category, $style = '')
+{
+    $text = '₹' . number_format($amount, 2);
+    if ($amount <= 0) {
+        return '<td style="text-align: right; ' . $style . '">' . $text . '</td>';
+    }
+    return '<td style="text-align: right; ' . $style . '"><a href="#" class="vd-link" data-project="' . (int) $project_id
+        . '" data-category="' . $category . '" data-project-name="' . htmlspecialchars($project_name, ENT_QUOTES) . '">' . $text . '</a></td>';
+}
+
 $current_page = 'report_voucher';
 $page_title = 'Voucher Report';
 $show_search = false;
@@ -271,13 +287,13 @@ include 'includes/app_header.php';
                             <tr>
                                 <td><span class="font-medium"><?php echo htmlspecialchars($row['project_name']); ?></span></td>
                                 <td style="text-align: right;">₹<?php echo number_format($row['total_advance'], 2); ?></td>
-                                <td style="text-align: right;">₹<?php echo number_format($row['hotel_bill'], 2); ?></td>
-                                <td style="text-align: right;">₹<?php echo number_format($row['material_bill'], 2); ?></td>
-                                <td style="text-align: right;">₹<?php echo number_format($row['refreshments_bill'], 2); ?></td>
-                                <td style="text-align: right;">₹<?php echo number_format($row['traveling_bill'], 2); ?></td>
-                                <td style="text-align: right;">₹<?php echo number_format($row['labour_bill'], 2); ?></td>
-                                <td style="text-align: right; font-weight: 500;">₹<?php echo number_format($row['contract_bill'], 2); ?></td>
-                                <td style="text-align: right; font-weight: 500;">₹<?php echo number_format($row['aarya_bill'], 2); ?></td>
+                                <?php echo voucher_amount_cell($row['hotel_bill'], $row['id'], $row['project_name'], 'hotel'); ?>
+                                <?php echo voucher_amount_cell($row['material_bill'], $row['id'], $row['project_name'], 'material'); ?>
+                                <?php echo voucher_amount_cell($row['refreshments_bill'], $row['id'], $row['project_name'], 'refreshments'); ?>
+                                <?php echo voucher_amount_cell($row['traveling_bill'], $row['id'], $row['project_name'], 'traveling'); ?>
+                                <?php echo voucher_amount_cell($row['labour_bill'], $row['id'], $row['project_name'], 'labour'); ?>
+                                <?php echo voucher_amount_cell($row['contract_bill'], $row['id'], $row['project_name'], 'contract', 'font-weight: 500;'); ?>
+                                <?php echo voucher_amount_cell($row['aarya_bill'], $row['id'], $row['project_name'], 'aarya', 'font-weight: 500;'); ?>
                                 <td style="text-align: right; color: #059669; font-weight: 500;">₹<?php echo number_format($row['total_set_off'], 2); ?></td>
                                 <td style="text-align: right; font-weight: 700;">₹<?php echo number_format($grand_total, 2); ?></td>
                                 <td style="text-align: right; color: <?php echo $difference < 0 ? '#dc2626' : '#16a34a'; ?>; font-weight: 700;">
@@ -495,6 +511,113 @@ include 'includes/app_header.php';
 
         doc.save('Voucher_Report_' + new Date().toISOString().slice(0,10) + '.pdf');
     }
+</script>
+
+<style>
+.vd-link { color: #1a56db; text-decoration: none; border-bottom: 1px dashed #1a56db; cursor: pointer; }
+.vd-link:hover { color: #1e40af; }
+#voucherDetailModal table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#voucherDetailModal th { text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+#voucherDetailModal td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+</style>
+
+<div id="voucherDetailModal" class="modal-overlay">
+    <div style="background: white; border-radius: 16px; width: 100%; max-width: 1100px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="padding: 20px 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+            <div>
+                <h2 id="vdTitle" style="font-size: 18px; font-weight: 600; margin: 0;">Vouchers</h2>
+                <p id="vdSubtitle" style="font-size: 13px; color: var(--text-secondary); margin: 4px 0 0 0;"></p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" id="vdExcelBtn" class="btn-primary" style="background: #1d6f42; font-size: 13px; padding: 8px 14px;">
+                    <i class="ph ph-file-xls"></i> Excel
+                </button>
+                <button type="button" id="vdZipBtn" class="btn-primary" style="background: #1a56db; font-size: 13px; padding: 8px 14px;">
+                    <i class="ph ph-file-zip"></i> Download all (ZIP)
+                </button>
+                <button type="button" id="vdCloseBtn" style="background: none; border: none; font-size: 24px; color: var(--text-secondary); cursor: pointer;">
+                    <i class="ph ph-x"></i>
+                </button>
+            </div>
+        </div>
+        <div id="vdBody" style="padding: 0 12px; overflow: auto; flex: 1;"></div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const detailQs = <?php echo json_encode($detailQs); ?>;
+        const modal = document.getElementById('voucherDetailModal');
+        const body = document.getElementById('vdBody');
+        const zipBtn = document.getElementById('vdZipBtn');
+        const excelBtn = document.getElementById('vdExcelBtn');
+        let currentQs = '';
+
+        function esc(v) {
+            const d = document.createElement('div');
+            d.textContent = v == null ? '' : v;
+            return d.innerHTML;
+        }
+        function money(n) {
+            return '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function close() { modal.style.display = 'none'; }
+
+        document.getElementById('vdCloseBtn').addEventListener('click', close);
+        modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+        excelBtn.addEventListener('click', function () {
+            window.location.href = 'handlers/export_voucher_details.php?format=excel' + currentQs;
+        });
+        zipBtn.addEventListener('click', function () {
+            window.location.href = 'handlers/export_voucher_details.php?format=zip' + currentQs;
+        });
+
+        document.querySelectorAll('.vd-link').forEach(function (link) {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                currentQs = '&project_id=' + link.dataset.project + '&category=' + link.dataset.category + detailQs;
+                document.getElementById('vdTitle').textContent = link.dataset.projectName;
+                document.getElementById('vdSubtitle').textContent = 'Loading vouchers...';
+                body.innerHTML = '';
+                zipBtn.disabled = excelBtn.disabled = true;
+                modal.style.display = 'flex';
+
+                fetch('handlers/get_voucher_details.php?' + currentQs.substring(1))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (!data.success) {
+                            document.getElementById('vdSubtitle').textContent = data.error || 'Failed to load vouchers.';
+                            return;
+                        }
+                        document.getElementById('vdTitle').textContent = data.project_name + ' - ' + data.category_label;
+                        document.getElementById('vdSubtitle').textContent =
+                            data.rows.length + ' voucher(s) | Total ' + money(data.total) + ' | ' + data.file_count + ' file(s) uploaded';
+                        zipBtn.disabled = data.file_count === 0;
+                        excelBtn.disabled = data.rows.length === 0;
+
+                        let html = '<table><thead><tr><th>Request</th><th>Invoice #</th><th>Invoice Date</th><th>Employee</th>' +
+                            '<th>Vendor</th><th>Type / Detail</th><th style="text-align:right;">Amount</th><th>Remark</th><th>File</th></tr></thead><tbody>';
+                        data.rows.forEach(function (r) {
+                            const file = r.has_file
+                                ? '<a href="' + esc(r.file_url) + '" target="_blank" style="color:#1a56db;">View</a>'
+                                : '<span style="color:#dc2626;">Not found</span>';
+                            html += '<tr><td><a href="payment_request_details.php?id=' + r.request_id + '" style="color:#1a56db;">' + esc(r.request_no) + '</a></td>' +
+                                '<td>' + esc(r.invoice_no || '-') + '</td><td>' + esc(r.invoice_date || '-') + '</td>' +
+                                '<td>' + esc(r.employee_name || '-') + '</td><td>' + esc(r.vendor || '-') + '</td>' +
+                                '<td>' + esc(r.type || '-') + '</td><td style="text-align:right;">' + money(r.amount) + '</td>' +
+                                '<td>' + esc(r.remarks || '') + '</td><td>' + file + '</td></tr>';
+                        });
+                        html += '</tbody><tfoot><tr><td colspan="6" style="font-weight:700; text-align:right;">TOTAL</td>' +
+                            '<td style="text-align:right; font-weight:700;">' + money(data.total) + '</td><td colspan="2"></td></tr></tfoot></table>';
+                        body.innerHTML = html;
+                    })
+                    .catch(function () {
+                        document.getElementById('vdSubtitle').textContent = 'Failed to load vouchers.';
+                    });
+            });
+        });
+    })();
 </script>
 
 <?php include 'includes/app_footer.php'; ?>

@@ -174,12 +174,21 @@ try {
         $is_auto_paid = true;
     }
 
-    // Update status and reviewed_by
-    $sql = "UPDATE payment_requests SET status = ?, reviewed_by = ?";
+    // reviewed_by = who approved/rejected; paid_by = who marked it Paid.
+    // Marking Paid must not overwrite the approver recorded in reviewed_by.
+    if ($status === 'Paid' && !$is_auto_paid) {
+        $sql = "UPDATE payment_requests SET status = ?, paid_by = ?";
+    } else {
+        $sql = "UPDATE payment_requests SET status = ?, reviewed_by = ?";
+    }
     $params = [$status, $reviewerId];
 
     if ($status === 'Approved' || $is_auto_paid) {
         $sql .= ", approved_at = NOW()";
+    }
+
+    if ($is_auto_paid) {
+        $sql .= ", paid_by = " . (int) $reviewerId;
     }
 
     if ($status === 'Paid') {
