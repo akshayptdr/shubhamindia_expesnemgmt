@@ -112,7 +112,7 @@ include 'includes/app_header.php';
                     $user_role = $_SESSION['user_role'] ?? '';
 
                     if (in_array($requester_role, ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'])) {
-                        if (in_array($user_role, ['Project Manager', 'Director'])) {
+                        if (in_array($user_role, ['Project Manager', 'Senior Project Manager', 'Director'])) {
                             $can_approve = true;
                         }
                     } elseif ($requester_role === 'Project Manager') {

@@ -52,7 +52,7 @@ try {
         $can_approve = false;
 
         if (in_array($requester_role, ['Fitter', 'Senior Fitter', 'Engineer', 'Senior Engineer'])) {
-            if (in_array($userRole, ['Project Manager', 'Director'])) {
+            if (in_array($userRole, ['Project Manager', 'Senior Project Manager', 'Director'])) {
                 $can_approve = true;
             }
         } elseif ($requester_role === 'Project Manager') {
