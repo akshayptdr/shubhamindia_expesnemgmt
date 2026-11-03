@@ -20,18 +20,32 @@ $perPage = 10;
 $empStmt = $pdo->query("SELECT id, name FROM employees WHERE status = 'Active' ORDER BY name ASC");
 $allEmployees = $empStmt->fetchAll();
 
+// Advance, Set Off and Pending follow the selected date range (by request created date); all time when no dates are selected
+$sub_date = function ($alias) use ($from_period, $to_period) {
+    $clause = '';
+    if ($from_period !== '') {
+        $clause .= " AND $alias.created_at >= :from_period";
+    }
+    if ($to_period !== '') {
+        $clause .= " AND $alias.created_at <= :to_period";
+    }
+    return $clause;
+};
+$date_pr2 = $sub_date('pr2');
+$date_pr3 = $sub_date('pr3');
+
 // Build query - Employee wise report with advance, voucher, set off
 $query = "SELECT
     e.id,
     e.name AS employee_name,
-    (SELECT COALESCE(SUM(pr2.amount), 0) FROM payment_requests pr2 WHERE pr2.employee_id = e.id AND pr2.status = 'Paid') AS total_advance,
+    (SELECT COALESCE(SUM(pr2.amount), 0) FROM payment_requests pr2 WHERE pr2.employee_id = e.id AND pr2.status = 'Paid'$date_pr2) AS total_advance,
     COALESCE(SUM(pri.amount), 0) AS total_voucher,
     (SELECT COALESCE(SUM(pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)), 0)
      FROM payment_requests pr3
-     WHERE pr3.employee_id = e.id AND pr3.status = 'Paid' AND pr3.voucher_approved_at IS NOT NULL) AS set_off,
+     WHERE pr3.employee_id = e.id AND pr3.status = 'Paid' AND pr3.voucher_approved_at IS NOT NULL$date_pr3) AS set_off,
     (SELECT COALESCE(SUM(CASE WHEN pr3.voucher_approved_at IS NULL THEN (pr3.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr3.id)) ELSE 0 END), 0)
      FROM payment_requests pr3
-     WHERE pr3.employee_id = e.id AND pr3.status = 'Paid') AS total_pending
+     WHERE pr3.employee_id = e.id AND pr3.status = 'Paid'$date_pr3) AS total_pending
 FROM employees e
 LEFT JOIN payment_requests pr ON e.id = pr.employee_id AND pr.status = 'Paid'
 LEFT JOIN payment_request_invoices pri ON pr.id = pri.payment_request_id";
@@ -106,7 +120,7 @@ foreach ($records as &$row) {
     $emp_id = $row['id'];
     
     // Settlements (Surpluses generated - using Gross)
-    $settSql = "SELECT pr.id, COALESCE(p.project_name, p.project_code) as project,
+    $settSql = "SELECT pr.id, pr.created_at, COALESCE(p.project_name, p.project_code) as project,
                 (pr.amount - (SELECT COALESCE(SUM(amount), 0) FROM payment_request_invoices WHERE payment_request_id = pr.id)) as surplus_amount
                 FROM payment_requests pr
                 JOIN projects p ON pr.project_id = p.id
@@ -158,9 +172,14 @@ foreach ($records as &$row) {
         } else {
             $status = "Cash in Hand";
         }
-        $breakdown[] = ['amount' => $amt, 'status' => $status];
+        $breakdown[] = ['amount' => $amt, 'status' => $status, 'created_at' => $sett['created_at']];
     }
-    $row['status_breakdown'] = $breakdown;
+    // FIFO above runs over all settlements; only show the ones inside the selected date range
+    $row['status_breakdown'] = array_values(array_filter($breakdown, function ($b) use ($from_period, $to_period) {
+        if ($from_period !== '' && $b['created_at'] < $from_period) { return false; }
+        if ($to_period !== '' && $b['created_at'] > $to_period . ' 23:59:59') { return false; }
+        return true;
+    }));
 }
 unset($row);
 
